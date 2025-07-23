@@ -107,6 +107,91 @@ class FileService {
       return validationResult;
     }
 
+    // S3 Presigned URL 방식 사용
+    return this.uploadFileViaS3(file, onProgress);
+  }
+
+  async uploadFileViaS3(file, onProgress) {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.token || !user?.sessionId) {
+        return { 
+          success: false, 
+          message: '인증 정보가 없습니다.' 
+        };
+      }
+
+      // 1. Presigned URL 요청
+      const presignedResponse = await this.getPresignedUploadUrl(file);
+      if (!presignedResponse.success) {
+        return presignedResponse;
+      }
+
+      const { uploadUrl, s3Key } = presignedResponse.data;
+      const source = CancelToken.source();
+      this.activeUploads.set(file.name, source);
+
+      // 2. S3에 직접 업로드
+      const s3UploadResponse = await this.uploadToS3(uploadUrl, file, onProgress, source.token);
+      if (!s3UploadResponse.success) {
+        this.activeUploads.delete(file.name);
+        return s3UploadResponse;
+      }
+
+      // 3. 백엔드에 업로드 완료 알림
+      const completionResponse = await this.notifyUploadComplete(file, s3Key);
+      this.activeUploads.delete(file.name);
+      
+      if (!completionResponse.success) {
+        return completionResponse;
+      }
+
+      const fileData = completionResponse.file;
+      return {
+        success: true,
+        data: {
+          ...completionResponse,
+          file: {
+            ...fileData,
+            url: this.getFileUrl(fileData.filename, true)
+          }
+        }
+      };
+
+    } catch (error) {
+      this.activeUploads.delete(file.name);
+      
+      if (isCancel(error)) {
+        return {
+          success: false,
+          message: '업로드가 취소되었습니다.'
+        };
+      }
+
+      if (error.response?.status === 401) {
+        try {
+          const refreshed = await authService.refreshToken();
+          if (refreshed) {
+            return this.uploadFileViaS3(file, onProgress);
+          }
+          return {
+            success: false,
+            message: '인증이 만료되었습니다. 다시 로그인해주세요.'
+          };
+        } catch (refreshError) {
+          return {
+            success: false,
+            message: '인증이 만료되었습니다. 다시 로그인해주세요.'
+          };
+        }
+      }
+
+      return this.handleUploadError(error);
+    }
+  }
+
+  // Legacy: 기존 multipart 업로드 방식 (호환성용)
+  async uploadFileViaMultipart(file, onProgress) {
     try {
       const user = authService.getCurrentUser();
       if (!user?.token || !user?.sessionId) {
@@ -179,7 +264,7 @@ class FileService {
         try {
           const refreshed = await authService.refreshToken();
           if (refreshed) {
-            return this.uploadFile(file, onProgress);
+            return this.uploadFileViaMultipart(file, onProgress);
           }
           return {
             success: false,
@@ -196,7 +281,37 @@ class FileService {
       return this.handleUploadError(error);
     }
   }
-  async downloadFile(filename, originalname) {
+  async downloadFile(filename, originalname, file = null) {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.token || !user?.sessionId) {
+        return {
+          success: false,
+          message: '인증 정보가 없습니다.'
+        };
+      }
+
+      // S3 파일인 경우 presigned URL 사용
+      if (file && (file.uploadMethod === 's3_presigned' || file.s3Key)) {
+        const downloadResult = await this.getS3DownloadUrl(filename);
+        if (!downloadResult.success) {
+          return downloadResult;
+        }
+
+        // S3 presigned URL로 직접 다운로드
+        window.open(downloadResult.downloadUrl, '_blank');
+        return { success: true };
+      }
+
+      // 로컬 파일 다운로드 로직
+      return this.downloadLocalFile(filename, originalname);
+    } catch (error) {
+      return this.handleDownloadError(error);
+    }
+  }
+
+  // 로컬 파일 다운로드 (레거시)
+  async downloadLocalFile(filename, originalname) {
     try {
       const user = authService.getCurrentUser();
       if (!user?.token || !user?.sessionId) {
@@ -289,7 +404,7 @@ class FileService {
         try {
           const refreshed = await authService.refreshToken();
           if (refreshed) {
-            return this.downloadFile(filename, originalname);
+            return this.downloadLocalFile(filename, originalname);
           }
         } catch (refreshError) {
           return {
@@ -314,6 +429,12 @@ class FileService {
   getPreviewUrl(file, withAuth = true) {
     if (!file?.filename) return '';
 
+    // S3 파일인 경우 S3 URL 사용
+    if (file.uploadMethod === 's3_presigned' || file.s3Key) {
+      return this.getS3PreviewUrl(file.filename);
+    }
+
+    // 로컬 파일
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
     
     if (!withAuth) return baseUrl;
@@ -327,6 +448,78 @@ class FileService {
     url.searchParams.append('sessionId', encodeURIComponent(user.sessionId));
 
     return url.toString();
+  }
+
+  // S3 미리보기 URL 생성
+  async getS3PreviewUrl(filename) {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.token || !user?.sessionId) {
+        return '';
+      }
+
+      const requestUrl = this.baseUrl ? 
+        `${this.baseUrl}/api/files/s3-url/view/${filename}` : 
+        `/api/files/s3-url/view/${filename}`;
+
+      const response = await axios.get(requestUrl, {
+        headers: {
+          'x-auth-token': user.token,
+          'x-session-id': user.sessionId
+        },
+        withCredentials: true
+      });
+
+      if (response.data.success) {
+        return response.data.viewUrl;
+      }
+      
+      return '';
+    } catch (error) {
+      console.error('S3 preview URL generation error:', error);
+      return '';
+    }
+  }
+
+  // S3 다운로드 URL 생성
+  async getS3DownloadUrl(filename) {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.token || !user?.sessionId) {
+        return { success: false, message: '인증 정보가 없습니다.' };
+      }
+
+      const requestUrl = this.baseUrl ? 
+        `${this.baseUrl}/api/files/s3-url/download/${filename}` : 
+        `/api/files/s3-url/download/${filename}`;
+
+      const response = await axios.get(requestUrl, {
+        headers: {
+          'x-auth-token': user.token,
+          'x-session-id': user.sessionId
+        },
+        withCredentials: true
+      });
+
+      if (response.data.success) {
+        return {
+          success: true,
+          downloadUrl: response.data.downloadUrl,
+          expires: response.data.expires
+        };
+      }
+      
+      return {
+        success: false,
+        message: response.data.message || '다운로드 URL 생성에 실패했습니다.'
+      };
+    } catch (error) {
+      console.error('S3 download URL generation error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || '다운로드 URL 생성 중 오류가 발생했습니다.'
+      };
+    }
   }
 
   getFileType(filename) {
@@ -520,6 +713,129 @@ class FileService {
         return '서비스를 일시적으로 사용할 수 없습니다.';
       default:
         return '알 수 없는 오류가 발생했습니다.';
+    }
+  }
+
+  // Presigned URL 요청
+  async getPresignedUploadUrl(file) {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.token || !user?.sessionId) {
+        return { 
+          success: false, 
+          message: '인증 정보가 없습니다.' 
+        };
+      }
+
+      const requestUrl = this.baseUrl ? 
+        `${this.baseUrl}/api/files/presigned-url` : 
+        '/api/files/presigned-url';
+
+      const response = await axios.post(requestUrl, {
+        filename: file.name,
+        mimetype: file.type,
+        size: file.size
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': user.token,
+          'x-session-id': user.sessionId
+        },
+        withCredentials: true
+      });
+
+      if (!response.data.success) {
+        return {
+          success: false,
+          message: response.data.message || 'Presigned URL 생성에 실패했습니다.'
+        };
+      }
+
+      return {
+        success: true,
+        data: response.data.data
+      };
+    } catch (error) {
+      console.error('Presigned URL request error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'Presigned URL 요청 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  // S3에 직접 업로드
+  async uploadToS3(uploadUrl, file, onProgress, cancelToken) {
+    try {
+      await axios.put(uploadUrl, file, {
+        headers: {
+          'Content-Type': file.type
+        },
+        cancelToken: cancelToken,
+        onUploadProgress: (progressEvent) => {
+          if (onProgress) {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            onProgress(percentCompleted);
+          }
+        }
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error('S3 upload error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || 'S3 업로드 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  // 업로드 완료 알림
+  async notifyUploadComplete(file, s3Key) {
+    try {
+      const user = authService.getCurrentUser();
+      if (!user?.token || !user?.sessionId) {
+        return { 
+          success: false, 
+          message: '인증 정보가 없습니다.' 
+        };
+      }
+
+      const requestUrl = this.baseUrl ? 
+        `${this.baseUrl}/api/files/upload-complete` : 
+        '/api/files/upload-complete';
+
+      const response = await axios.post(requestUrl, {
+        s3Key: s3Key,
+        filename: s3Key.split('/').pop(), // s3Key에서 파일명 추출
+        originalname: file.name,
+        mimetype: file.type,
+        size: file.size
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': user.token,
+          'x-session-id': user.sessionId
+        },
+        withCredentials: true
+      });
+
+      if (!response.data.success) {
+        return {
+          success: false,
+          message: response.data.message || '업로드 완료 처리에 실패했습니다.'
+        };
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Upload completion notification error:', error);
+      return {
+        success: false,
+        message: error.response?.data?.message || '업로드 완료 알림 중 오류가 발생했습니다.'
+      };
     }
   }
 

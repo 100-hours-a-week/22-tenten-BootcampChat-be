@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataSource name="bootcampchat@localhost">
+  <database-model serializer="dbm" dbms="MONGO" family-id="MONGO" format-version="4.53">
+    <root id="1">
+      <ServerVersion>8.0.12</ServerVersion>
+    </root>
+    <schema id="2" parent="1" name="admin"/>
+    <schema id="3" parent="1" name="bootcampchat">
+      <Current>1</Current>
+      <LastIntrospectionLocalTimestamp>2025-07-22.08:48:44</LastIntrospectionLocalTimestamp>
+    </schema>
+    <schema id="4" parent="1" name="config"/>
+    <schema id="5" parent="1" name="local"/>
+    <table id="6" parent="3" name="files"/>
+    <table id="7" parent="3" name="messages"/>
+    <table id="8" parent="3" name="rooms"/>
+    <table id="9" parent="3" name="users"/>
+    <column id="10" parent="6" name="_id">
+      <Position>1</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="11" parent="6" name="createdAt">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="12" parent="6" name="filename">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="13" parent="6" name="mimetype">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="14" parent="6" name="originalname">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="15" parent="6" name="path">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="16" parent="6" name="size">
+      <Position>1</Position>
+      <StoredType>Int32|4s</StoredType>
+    </column>
+    <column id="17" parent="6" name="updatedAt">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="18" parent="6" name="uploadDate">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="19" parent="6" name="__v">
+      <Position>2</Position>
+      <StoredType>Int32|4s</StoredType>
+    </column>
+    <column id="20" parent="6" name="user">
+      <Position>2</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <index id="21" parent="6" name="filename_1_user_1">
+      <ColNames>filename
+user</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <index id="22" parent="6" name="_id_">
+      <ColNames>_id</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <index id="23" parent="6" name="filename_1">
+      <ColNames>filename</ColNames>
+    </index>
+    <index id="24" parent="6" name="uploadDate_1">
+      <ColNames>uploadDate</ColNames>
+    </index>
+    <index id="25" parent="6" name="user_1">
+      <ColNames>user</ColNames>
+    </index>
+    <column id="26" parent="7" name="_id">
+      <Position>1</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="27" parent="7" name="__v">
+      <Position>1</Position>
+      <StoredType>Int32|4s</StoredType>
+    </column>
+    <column id="28" parent="7" name="createdAt">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="29" parent="7" name="file">
+      <Position>1</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="30" parent="7" name="isDeleted">
+      <Position>1</Position>
+      <StoredType>Boolean|12s</StoredType>
+    </column>
+    <column id="31" parent="7" name="mentions">
+      <Position>1</Position>
+      <StoredType>list|4999545s</StoredType>
+    </column>
+    <column id="32" parent="7" name="reactions">
+      <Position>1</Position>
+      <StoredType>Object|4999544s</StoredType>
+    </column>
+    <column id="33" parent="7" name="timestamp">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="34" parent="7" name="updatedAt">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="35" parent="7" name="content">
+      <Position>2</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="36" parent="7" name="metadata">
+      <Position>2</Position>
+      <StoredType>Object|4999544s</StoredType>
+    </column>
+    <column id="37" parent="7" name="readers">
+      <Position>2</Position>
+      <StoredType>list|4999545s</StoredType>
+    </column>
+    <column id="38" parent="7" name="type">
+      <Position>2</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="39" parent="7" name="metadata.fileSize">
+      <Position>3</Position>
+      <StoredType>Int32|4s</StoredType>
+    </column>
+    <column id="40" parent="7" name="readers._id">
+      <Position>3</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="41" parent="7" name="metadata.fileType">
+      <Position>4</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="42" parent="7" name="readers.readAt">
+      <Position>4</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="43" parent="7" name="metadata.originalName">
+      <Position>5</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="44" parent="7" name="readers.userId">
+      <Position>5</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="45" parent="7" name="room">
+      <Position>6</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="46" parent="7" name="sender">
+      <Position>7</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <index id="47" parent="7" name="_id_">
+      <ColNames>_id</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <index id="48" parent="7" name="isDeleted_1">
+      <ColNames>isDeleted</ColNames>
+    </index>
+    <index id="49" parent="7" name="reactions.userId_1">
+      <ColNames>reactions</ColNames>
+    </index>
+    <index id="50" parent="7" name="timestamp_-1">
+      <ColNames>timestamp</ColNames>
+      <ReverseColNames>timestamp</ReverseColNames>
+    </index>
+    <index id="51" parent="7" name="timestamp_1">
+      <ColNames>timestamp</ColNames>
+    </index>
+    <index id="52" parent="7" name="type_1">
+      <ColNames>type</ColNames>
+    </index>
+    <index id="53" parent="7" name="readers.userId_1">
+      <ColNames>readers.userId</ColNames>
+    </index>
+    <index id="54" parent="7" name="room_1_isDeleted_1">
+      <ColNames>room
+isDeleted</ColNames>
+    </index>
+    <index id="55" parent="7" name="room_1_timestamp_-1">
+      <ColNames>room
+timestamp</ColNames>
+      <ReverseColNames>timestamp</ReverseColNames>
+    </index>
+    <index id="56" parent="7" name="room_1">
+      <ColNames>room</ColNames>
+    </index>
+    <index id="57" parent="7" name="sender_1">
+      <ColNames>sender</ColNames>
+    </index>
+    <column id="58" parent="8" name="_id">
+      <Position>1</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="59" parent="8" name="__v">
+      <Position>1</Position>
+      <StoredType>Int32|4s</StoredType>
+    </column>
+    <column id="60" parent="8" name="createdAt">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="61" parent="8" name="creator">
+      <Position>1</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="62" parent="8" name="hasPassword">
+      <Position>1</Position>
+      <StoredType>Boolean|12s</StoredType>
+    </column>
+    <column id="63" parent="8" name="name">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="64" parent="8" name="participants">
+      <Position>1</Position>
+      <StoredType>list|4999545s</StoredType>
+    </column>
+    <index id="65" parent="8" name="_id_">
+      <ColNames>_id</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <column id="66" parent="9" name="_id">
+      <Position>1</Position>
+      <StoredType>ObjectId|12s</StoredType>
+    </column>
+    <column id="67" parent="9" name="__v">
+      <Position>1</Position>
+      <StoredType>Int32|4s</StoredType>
+    </column>
+    <column id="68" parent="9" name="createdAt">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="69" parent="9" name="email">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="70" parent="9" name="lastActive">
+      <Position>1</Position>
+      <StoredType>ISODate|91s</StoredType>
+    </column>
+    <column id="71" parent="9" name="name">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="72" parent="9" name="password">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="73" parent="9" name="profileImage">
+      <Position>1</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <column id="74" parent="9" name="encryptedEmail">
+      <Position>2</Position>
+      <StoredType>String|12s</StoredType>
+    </column>
+    <index id="75" parent="9" name="_id_">
+      <ColNames>_id</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <index id="76" parent="9" name="email_1">
+      <ColNames>email</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <index id="77" parent="9" name="encryptedEmail_1">
+      <ColNames>encryptedEmail</ColNames>
+      <Unique>1</Unique>
+    </index>
+    <index id="78" parent="9" name="createdAt_1">
+      <ColNames>createdAt</ColNames>
+    </index>
+    <index id="79" parent="9" name="lastActive_1">
+      <ColNames>lastActive</ColNames>
+    </index>
+  </database-model>
+</dataSource>

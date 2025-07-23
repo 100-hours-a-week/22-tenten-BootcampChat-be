@@ -58,7 +58,20 @@ const FileSchema = new mongoose.Schema({
   },
   path: { 
     type: String,
-    required: true
+    required: false // S3 업로드시 필요없음
+  },
+  s3Key: {
+    type: String,
+    required: false // 로컬 업로드시 필요없음
+  },
+  s3Bucket: {
+    type: String,
+    required: false
+  },
+  uploadMethod: {
+    type: String,
+    enum: ['local', 's3_presigned'],
+    default: 'local'
   },
   uploadDate: { 
     type: Date, 
@@ -121,7 +134,21 @@ FileSchema.methods.getEncodedFilename = function() {
 
 // 파일 URL 생성을 위한 유틸리티 메서드
 FileSchema.methods.getFileUrl = function(type = 'download') {
+  if (this.uploadMethod === 's3_presigned' && this.s3Key) {
+    // S3 파일의 경우 presigned URL 생성 필요
+    return `/api/files/s3-url/${type}/${encodeURIComponent(this.filename)}`;
+  }
+  // 로컬 파일
   return `/api/files/${type}/${encodeURIComponent(this.filename)}`;
+};
+
+// S3 공개 URL 생성 메서드
+FileSchema.methods.getS3PublicUrl = function() {
+  if (this.uploadMethod === 's3_presigned' && this.s3Key && this.s3Bucket) {
+    const region = process.env.AWS_REGION || 'ap-northeast-2';
+    return `https://${this.s3Bucket}.s3.${region}.amazonaws.com/${this.s3Key}`;
+  }
+  return null;
 };
 
 // 다운로드용 Content-Disposition 헤더 생성 메서드
@@ -139,6 +166,16 @@ FileSchema.methods.isPreviewable = function() {
     'application/pdf'
   ];
   return previewableTypes.includes(this.mimetype);
+};
+
+// S3 파일인지 확인하는 메서드
+FileSchema.methods.isS3File = function() {
+  return this.uploadMethod === 's3_presigned' && !!this.s3Key;
+};
+
+// 로컬 파일인지 확인하는 메서드
+FileSchema.methods.isLocalFile = function() {
+  return this.uploadMethod === 'local' && !!this.path;
 };
 
 module.exports = mongoose.model('File', FileSchema);
