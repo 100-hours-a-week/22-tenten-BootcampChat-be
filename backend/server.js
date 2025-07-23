@@ -10,7 +10,7 @@ const routes = require('./routes');
 
 const app = express();
 const server = http.createServer(app);
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // trust proxy 설정 추가
 app.set('trust proxy', 1);
@@ -27,19 +27,19 @@ const corsOptions = {
     'https://localhost:3001',
     'https://localhost:3002',
     'http://0.0.0.0:3000',
-    'https://0.0.0.0:3000'
+    'https://0.0.0.0:3000',
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'x-auth-token', 
+    'Content-Type',
+    'Authorization',
+    'x-auth-token',
     'x-session-id',
     'Cache-Control',
-    'Pragma'
+    'Pragma',
   ],
-  exposedHeaders: ['x-auth-token', 'x-session-id']
+  exposedHeaders: ['x-auth-token', 'x-session-id'],
 };
 
 // 기본 미들웨어
@@ -56,17 +56,19 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // 요청 로깅
 if (process.env.NODE_ENV === 'development') {
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`
+    );
     next();
   });
 }
 
 // 기본 상태 체크
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV
+    env: process.env.NODE_ENV,
   });
 });
 
@@ -86,7 +88,7 @@ app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: '요청하신 리소스를 찾을 수 없습니다.',
-    path: req.originalUrl
+    path: req.originalUrl,
   });
 });
 
@@ -96,12 +98,13 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     success: false,
     message: err.message || '서버 에러가 발생했습니다.',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
 
 // 서버 시작
-mongoose.connect(process.env.MONGO_URI)
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => {
     console.log('MongoDB Connected');
     server.listen(PORT, '0.0.0.0', () => {
@@ -110,7 +113,7 @@ mongoose.connect(process.env.MONGO_URI)
       console.log('API Base URL:', `http://0.0.0.0:${PORT}/api`);
     });
   })
-  .catch(err => {
+  .catch((err) => {
     console.error('Server startup error:', err);
     process.exit(1);
   });
