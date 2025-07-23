@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { FileTypeValidator } = require('../../shared/fileTypeConfig');
 
 const FileSchema = new mongoose.Schema({
   filename: { 
@@ -43,13 +44,38 @@ const FileSchema = new mongoose.Schema({
   },
   mimetype: { 
     type: String,
-    required: true
+    required: true,
+    index: true
   },
   size: { 
     type: Number,
     required: true,
     min: 0
   },
+  
+  // Enhanced file categorization
+  category: {
+    type: String,
+    enum: ['image', 'video', 'audio', 'document', 'archive', 'other'],
+    required: true,
+    index: true,
+    default: function() {
+      // Auto-determine category from MIME type
+      const validation = FileTypeValidator.validateFile(this.mimetype, this.size, this.originalname);
+      return validation.category || 'other';
+    }
+  },
+  
+  subtype: {
+    type: String,
+    // Examples: 'photo', 'animation' for images; 'movie', 'clip' for videos
+    // 'music', 'voice' for audio; 'pdf', 'text', 'presentation' for documents
+    default: function() {
+      const validation = FileTypeValidator.validateFile(this.mimetype, this.size, this.originalname);
+      return validation.subtype || null;
+    }
+  },
+  
   user: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User',
@@ -58,13 +84,105 @@ const FileSchema = new mongoose.Schema({
   },
   path: { 
     type: String,
-    required: true
+    required: false // S3 업로드시 필요없음
   },
+  s3Key: {
+    type: String,
+    required: false, // 로컬 업로드시 필요없음
+    index: true
+  },
+  s3Bucket: {
+    type: String,
+    required: false
+  },
+  uploadMethod: {
+    type: String,
+    enum: ['local', 's3_presigned'],
+    default: 's3_presigned' // Default to S3 for new uploads
+  },
+  
+  // Enhanced metadata
+  metadata: {
+    // Image metadata
+    dimensions: {
+      width: { type: Number, min: 0 },
+      height: { type: Number, min: 0 }
+    },
+    
+    // Video/Audio metadata
+    duration: { type: Number, min: 0 }, // in seconds
+    bitrate: { type: Number, min: 0 },
+    
+    // Video specific
+    framerate: { type: Number, min: 0 },
+    resolution: String, // '1080p', '720p', etc.
+    
+    // Audio specific
+    sampleRate: { type: Number, min: 0 },
+    channels: { type: Number, min: 1 },
+    
+    // Document metadata
+    pageCount: { type: Number, min: 0 },
+    
+    // General metadata
+    encoding: String,
+    compression: String,
+    colorProfile: String,
+    
+    // File hash for integrity checking
+    hash: {
+      algorithm: {
+        type: String,
+        enum: ['md5', 'sha256'],
+        default: 'sha256'
+      },
+      value: String
+    }
+  },
+  
+  // Processing status
+  processing: {
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'failed'],
+      default: 'completed'
+    },
+    thumbnail: {
+      generated: { type: Boolean, default: false },
+      s3Key: String,
+      size: { type: Number, min: 0 }
+    },
+    // For future features like virus scanning, content analysis
+    scanned: { type: Boolean, default: false },
+    scanResult: String,
+    processedAt: Date
+  },
+  
+  // Access and usage tracking
+  access: {
+    downloadCount: { type: Number, default: 0, min: 0 },
+    viewCount: { type: Number, default: 0, min: 0 },
+    lastAccessed: Date,
+    sharedWith: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      permission: { 
+        type: String, 
+        enum: ['view', 'download'], 
+        default: 'view' 
+      },
+      sharedAt: { type: Date, default: Date.now }
+    }]
+  },
+  
   uploadDate: { 
     type: Date, 
     default: Date.now,
     index: true
-  }
+  },
+  
+  // File lifecycle
+  expiresAt: Date, // For temporary files
+  archivedAt: Date // For archived files
 }, {
   timestamps: true,
   toJSON: { getters: true },
@@ -73,6 +191,11 @@ const FileSchema = new mongoose.Schema({
 
 // 복합 인덱스
 FileSchema.index({ filename: 1, user: 1 }, { unique: true });
+FileSchema.index({ user: 1, category: 1, uploadDate: -1 }); // 사용자별 카테고리 파일 조회
+FileSchema.index({ user: 1, uploadMethod: 1, uploadDate: -1 }); // 사용자별 업로드 방식 조회
+FileSchema.index({ category: 1, mimetype: 1 }); // 카테고리별 MIME 타입 조회
+FileSchema.index({ 'processing.status': 1, uploadDate: -1 }); // 처리 상태별 조회
+FileSchema.index({ expiresAt: 1 }, { sparse: true }); // 만료 파일 정리용
 
 // 파일 삭제 전 처리
 FileSchema.pre('remove', async function(next) {
@@ -121,7 +244,21 @@ FileSchema.methods.getEncodedFilename = function() {
 
 // 파일 URL 생성을 위한 유틸리티 메서드
 FileSchema.methods.getFileUrl = function(type = 'download') {
+  if (this.uploadMethod === 's3_presigned' && this.s3Key) {
+    // S3 파일의 경우 presigned URL 생성 필요
+    return `/api/files/s3-url/${type}/${encodeURIComponent(this.filename)}`;
+  }
+  // 로컬 파일
   return `/api/files/${type}/${encodeURIComponent(this.filename)}`;
+};
+
+// S3 공개 URL 생성 메서드
+FileSchema.methods.getS3PublicUrl = function() {
+  if (this.uploadMethod === 's3_presigned' && this.s3Key && this.s3Bucket) {
+    const region = process.env.AWS_REGION || 'ap-northeast-2';
+    return `https://${this.s3Bucket}.s3.${region}.amazonaws.com/${this.s3Key}`;
+  }
+  return null;
 };
 
 // 다운로드용 Content-Disposition 헤더 생성 메서드
@@ -130,15 +267,73 @@ FileSchema.methods.getContentDisposition = function(type = 'attachment') {
   return `${type}; filename="${legacy}"; filename*=${encoded}`;
 };
 
-// 파일 MIME 타입 검증 메서드
+// Enhanced file categorization methods
+FileSchema.methods.getFileCategory = function() {
+  return this.category || 'other';
+};
+
+FileSchema.methods.getFileSubtype = function() {
+  return this.subtype || null;
+};
+
+FileSchema.methods.isMediaFile = function() {
+  return ['image', 'video', 'audio'].includes(this.category);
+};
+
+// Enhanced preview capability check
 FileSchema.methods.isPreviewable = function() {
-  const previewableTypes = [
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    'video/mp4', 'video/webm',
-    'audio/mpeg', 'audio/wav',
-    'application/pdf'
-  ];
-  return previewableTypes.includes(this.mimetype);
+  // Use shared validation to determine if file is previewable
+  return FileTypeValidator.isPreviewable(this.mimetype);
+};
+
+// File metadata methods
+FileSchema.methods.hasMetadata = function() {
+  return !!(this.metadata && Object.keys(this.metadata).length > 0);
+};
+
+FileSchema.methods.getDimensions = function() {
+  return this.metadata?.dimensions || null;
+};
+
+FileSchema.methods.getDuration = function() {
+  return this.metadata?.duration || null;
+};
+
+FileSchema.methods.getFormattedDuration = function() {
+  const duration = this.getDuration();
+  if (!duration) return null;
+  
+  const hours = Math.floor(duration / 3600);
+  const minutes = Math.floor((duration % 3600) / 60);
+  const seconds = Math.floor(duration % 60);
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// Access tracking methods
+FileSchema.methods.incrementDownloadCount = function() {
+  this.access.downloadCount = (this.access.downloadCount || 0) + 1;
+  this.access.lastAccessed = new Date();
+  return this.save();
+};
+
+FileSchema.methods.incrementViewCount = function() {
+  this.access.viewCount = (this.access.viewCount || 0) + 1;
+  this.access.lastAccessed = new Date();
+  return this.save();
+};
+
+// S3 파일인지 확인하는 메서드
+FileSchema.methods.isS3File = function() {
+  return this.uploadMethod === 's3_presigned' && !!this.s3Key;
+};
+
+// 로컬 파일인지 확인하는 메서드
+FileSchema.methods.isLocalFile = function() {
+  return this.uploadMethod === 'local' && !!this.path;
 };
 
 module.exports = mongoose.model('File', FileSchema);

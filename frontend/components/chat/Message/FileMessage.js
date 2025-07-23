@@ -3,12 +3,13 @@ import {
   PdfIcon as FileText, 
   ImageIcon as Image, 
   MovieIcon as Film, 
-  CorrectOutlineIcon as CheckCheck, 
-  CorrectOutlineIcon as Check, 
-  MusicIcon as Music, 
-  ExternalLinkIcon as ExternalLink, 
+  SoundOnIcon as Music, 
+  OpenInNewOutlineIcon as ExternalLink, 
   DownloadIcon as Download,
-  ErrorCircleIcon as AlertCircle 
+  ErrorCircleIcon as AlertCircle,
+  FolderZipIcon as Archive,
+  DocumentIcon as Document,
+  CodeIcon as Code
 } from '@vapor-ui/icons';
 import { Button, Text, Callout } from '@vapor-ui/core';
 import PersistentAvatar from '../../common/PersistentAvatar';
@@ -59,11 +60,40 @@ const FileMessage = ({
 
   const getFileIcon = () => {
     const mimetype = msg.file?.mimetype || '';
+    const category = msg.file?.category;
     const iconProps = { className: "w-5 h-5 flex-shrink-0" };
 
+    // Use category if available, otherwise fall back to mimetype
+    if (category) {
+      switch (category) {
+        case 'image':
+          return <Image {...iconProps} color="#00C853" />;
+        case 'video':
+          return <Film {...iconProps} color="#2196F3" />;
+        case 'audio':
+          return <Music {...iconProps} color="#9C27B0" />;
+        case 'document':
+          if (mimetype === 'application/pdf') {
+            return <FileText {...iconProps} color="#F44336" />;
+          }
+          return <Document {...iconProps} color="#FF9800" />;
+        case 'archive':
+          return <Archive {...iconProps} color="#795548" />;
+        default:
+          return <FileText {...iconProps} color="#ffffff" />;
+      }
+    }
+
+    // Fallback to mimetype-based detection for legacy files
     if (mimetype.startsWith('image/')) return <Image {...iconProps} color="#00C853" />;
     if (mimetype.startsWith('video/')) return <Film {...iconProps} color="#2196F3" />;
     if (mimetype.startsWith('audio/')) return <Music {...iconProps} color="#9C27B0" />;
+    if (mimetype === 'application/pdf') return <FileText {...iconProps} color="#F44336" />;
+    if (mimetype.startsWith('application/') && mimetype.includes('zip')) {
+      return <Archive {...iconProps} color="#795548" />;
+    }
+    if (mimetype.startsWith('text/')) return <Code {...iconProps} color="#4CAF50" />;
+    
     return <FileText {...iconProps} color="#ffffff" />;
   };
 
@@ -210,8 +240,39 @@ const FileMessage = ({
 
   const renderFilePreview = () => {
     const mimetype = msg.file?.mimetype || '';
+    const category = msg.file?.category || 'other';
     const originalname = getDecodedFilename(msg.file?.originalname || 'Unknown File');
     const size = fileService.formatFileSize(msg.file?.size || 0);
+    const metadata = msg.file?.metadata || {};
+    
+    // Format additional metadata info
+    const getMetadataInfo = () => {
+      const info = [];
+      
+      if (metadata.dimensions?.width && metadata.dimensions?.height) {
+        info.push(`${metadata.dimensions.width}×${metadata.dimensions.height}`);
+      }
+      
+      if (metadata.duration) {
+        const hours = Math.floor(metadata.duration / 3600);
+        const minutes = Math.floor((metadata.duration % 3600) / 60);
+        const seconds = Math.floor(metadata.duration % 60);
+        
+        if (hours > 0) {
+          info.push(`${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+        } else {
+          info.push(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        }
+      }
+      
+      if (metadata.pageCount) {
+        info.push(`${metadata.pageCount} 페이지`);
+      }
+      
+      return info.join(' • ');
+    };
+    
+    const metadataInfo = getMetadataInfo();
     
     const FileActions = () => (
       <div className="file-actions mt-2 pt-2 border-t border-gray-200">
@@ -248,7 +309,10 @@ const FileMessage = ({
           <div className={fileInfoClass}>
             <div className="flex-1 min-w-0">
               <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
-              <span className="text-sm text-muted">{size}</span>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
             </div>
           </div>
           <FileActions />
@@ -281,7 +345,10 @@ const FileMessage = ({
           <div className={fileInfoClass}>
             <div className="flex-1 min-w-0">
               <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
-              <span className="text-sm text-muted">{size}</span>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
             </div>
           </div>
           <FileActions />
@@ -295,7 +362,10 @@ const FileMessage = ({
           <div className={fileInfoClass}>
             <div className="flex-1 min-w-0">
               <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
-              <span className="text-sm text-muted">{size}</span>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
             </div>
           </div>
           <div className="px-3 pb-3">
@@ -317,12 +387,84 @@ const FileMessage = ({
       );
     }
 
+    // Handle PDF files specially
+    if (mimetype === 'application/pdf') {
+      return (
+        <div className={previewWrapperClass}>
+          <div className={fileInfoClass}>
+            <div className="flex-1 min-w-0">
+              <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded text-center">
+            <FileText className="w-12 h-12 mx-auto mb-2 text-red-600" />
+            <Text typography="body2" className="text-gray-600">PDF 문서</Text>
+          </div>
+          <FileActions />
+        </div>
+      );
+    }
+
+    // Handle archive files
+    if (category === 'archive' || mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('7z')) {
+      return (
+        <div className={previewWrapperClass}>
+          <div className={fileInfoClass}>
+            <div className="flex-1 min-w-0">
+              <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded text-center">
+            <Archive className="w-12 h-12 mx-auto mb-2 text-brown-600" />
+            <Text typography="body2" className="text-gray-600">압축 파일</Text>
+          </div>
+          <FileActions />
+        </div>
+      );
+    }
+
+    // Handle text files and documents
+    if (mimetype.startsWith('text/') || (category === 'document' && mimetype !== 'application/pdf')) {
+      return (
+        <div className={previewWrapperClass}>
+          <div className={fileInfoClass}>
+            <div className="flex-1 min-w-0">
+              <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded text-center">
+            <Document className="w-12 h-12 mx-auto mb-2 text-orange-600" />
+            <Text typography="body2" className="text-gray-600">
+              {category === 'document' ? '문서 파일' : '텍스트 파일'}
+            </Text>
+          </div>
+          <FileActions />
+        </div>
+      );
+    }
+
+    // Default fallback for other file types
     return (
       <div className={previewWrapperClass}>
         <div className={fileInfoClass}>
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate">{getFileIcon()} {originalname}</div>
-            <Text typography="body2" as="span">{size}</Text>
+            <div className="text-sm text-muted">
+              <span>{size}</span>
+              {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+            </div>
           </div>
         </div>
         <FileActions />
