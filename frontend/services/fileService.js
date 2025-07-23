@@ -2,55 +2,19 @@ import axios, { isCancel, CancelToken } from 'axios';
 import authService from './authService';
 import { Toast } from '../components/Toast';
 
+// Import shared file type configuration
+// Note: In browser environment, this would be loaded via script tag or bundled
+const { ALLOWED_FILE_TYPES, FileTypeValidator } = window.ALLOWED_FILE_TYPES ? 
+  { ALLOWED_FILE_TYPES: window.ALLOWED_FILE_TYPES, FileTypeValidator: window.FileTypeValidator } :
+  require('../../shared/fileTypeConfig');
+
 class FileService {
   constructor() {
     this.baseUrl = process.env.NEXT_PUBLIC_API_URL;
-    this.uploadLimit = 50 * 1024 * 1024; // 50MB
+    this.uploadLimit = 100 * 1024 * 1024; // 100MB (increased for video/archive files)
     this.retryAttempts = 3;
     this.retryDelay = 1000;
     this.activeUploads = new Map();
-
-    this.allowedTypes = {
-      image: {
-        extensions: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
-        mimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-        maxSize: 10 * 1024 * 1024,
-        name: '이미지'
-      },
-      video: {
-        extensions: ['.mp4', '.webm', '.mov'],
-        mimeTypes: ['video/mp4', 'video/webm', 'video/quicktime'],
-        maxSize: 50 * 1024 * 1024,
-        name: '동영상'
-      },
-      audio: {
-        extensions: ['.mp3', '.wav', '.ogg'],
-        mimeTypes: ['audio/mpeg', 'audio/wav', 'audio/ogg'],
-        maxSize: 20 * 1024 * 1024,
-        name: '오디오'
-      },
-      document: {
-        extensions: ['.pdf', '.doc', '.docx', '.txt'],
-        mimeTypes: [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'text/plain'
-        ],
-        maxSize: 20 * 1024 * 1024,
-        name: '문서'
-      },
-      archive: {
-        extensions: ['.zip', '.rar', '.7z'],
-        mimeTypes: [
-          'application/zip',
-          'application/x-rar-compressed',
-          'application/x-7z-compressed'
-        ],
-        maxSize: 50 * 1024 * 1024,
-        name: '압축파일'
-      }
-    };
   }
 
   async validateFile(file) {
@@ -61,44 +25,29 @@ class FileService {
     }
 
     if (file.size > this.uploadLimit) {
-      const message = `파일 크기는 ${this.formatFileSize(this.uploadLimit)}를 초과할 수 없습니다.`;
+      const message = `파일 크기는 ${FileTypeValidator.formatFileSize(this.uploadLimit)}를 초과할 수 없습니다.`;
       Toast.error(message);
       return { success: false, message };
     }
 
-    let isAllowedType = false;
-    let maxTypeSize = 0;
-    let typeConfig = null;
-
-    for (const config of Object.values(this.allowedTypes)) {
-      if (config.mimeTypes.includes(file.type)) {
-        isAllowedType = true;
-        maxTypeSize = config.maxSize;
-        typeConfig = config;
-        break;
-      }
+    // Use shared validation
+    const validation = FileTypeValidator.validateFile(file.type, file.size, file.name);
+    
+    if (!validation.valid) {
+      Toast.error(validation.error);
+      return { 
+        success: false, 
+        message: validation.error,
+        category: validation.category
+      };
     }
 
-    if (!isAllowedType) {
-      const message = '지원하지 않는 파일 형식입니다.';
-      Toast.error(message);
-      return { success: false, message };
-    }
-
-    if (file.size > maxTypeSize) {
-      const message = `${typeConfig.name} 파일은 ${this.formatFileSize(maxTypeSize)}를 초과할 수 없습니다.`;
-      Toast.error(message);
-      return { success: false, message };
-    }
-
-    const ext = this.getFileExtension(file.name);
-    if (!typeConfig.extensions.includes(ext.toLowerCase())) {
-      const message = '파일 확장자가 올바르지 않습니다.';
-      Toast.error(message);
-      return { success: false, message };
-    }
-
-    return { success: true };
+    return { 
+      success: true,
+      category: validation.category,
+      subtype: validation.subtype,
+      previewable: validation.previewable
+    };
   }
 
   async uploadFile(file, onProgress) {
@@ -524,26 +473,17 @@ class FileService {
 
   getFileType(filename) {
     if (!filename) return 'unknown';
-    const ext = this.getFileExtension(filename).toLowerCase();
-    for (const [type, config] of Object.entries(this.allowedTypes)) {
-      if (config.extensions.includes(ext)) {
-        return type;
-      }
-    }
-    return 'unknown';
+    const ext = FileTypeValidator.getFileExtension(filename);
+    const possibleTypes = FileTypeValidator.getMimeTypesByExtension(ext);
+    return possibleTypes.length > 0 ? possibleTypes[0].category : 'unknown';
   }
 
   getFileExtension(filename) {
-    if (!filename) return '';
-    const parts = filename.split('.');
-    return parts.length > 1 ? `.${parts.pop().toLowerCase()}` : '';
+    return FileTypeValidator.getFileExtension(filename);
   }
 
   formatFileSize(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${parseFloat((bytes / Math.pow(1024, i)).toFixed(2))} ${units[i]}`;
+    return FileTypeValidator.formatFileSize(bytes);
   }
 
   getHeaders() {
