@@ -3,6 +3,7 @@ const Message = require('../models/Message');
 const Room = require('../models/Room');
 const { processFileForRAG } = require('../services/fileService');
 const s3Service = require('../services/s3Service');
+const { FileTypeValidator } = require('../../shared/fileTypeConfig');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
@@ -96,13 +97,19 @@ exports.uploadFile = async (req, res) => {
     const currentPath = req.file.path;
     const newPath = path.join(uploadDir, safeFilename);
 
+    // Get file type validation info
+    const validation = FileTypeValidator.validateFile(req.file.mimetype, req.file.size, req.file.originalname);
+
     const file = new File({
       filename: safeFilename,
       originalname: req.file.originalname,
       mimetype: req.file.mimetype,
       size: req.file.size,
       user: req.user.id,
-      path: newPath
+      path: newPath,
+      category: validation.category || 'other',
+      subtype: validation.subtype,
+      uploadMethod: 'local'
     });
 
     await file.save();
@@ -141,6 +148,10 @@ exports.uploadFile = async (req, res) => {
 exports.downloadFile = async (req, res) => {
   try {
     const { file, filePath } = await getFileFromRequest(req);
+    
+    // Track download
+    await file.incrementDownloadCount();
+    
     const contentDisposition = file.getContentDisposition('attachment');
 
     res.set({
@@ -180,6 +191,9 @@ exports.viewFile = async (req, res) => {
         message: '미리보기를 지원하지 않는 파일 형식입니다.'
       });
     }
+
+    // Track view
+    await file.incrementViewCount();
 
     const contentDisposition = file.getContentDisposition('inline');
         
@@ -439,6 +453,9 @@ exports.uploadComplete = async (req, res) => {
       });
     }
 
+    // Get file type validation info
+    const validation = FileTypeValidator.validateFile(mimetype, verification.actualSize, originalname);
+
     // 데이터베이스에 파일 정보 저장
     const file = new File({
       filename: filename,
@@ -448,7 +465,9 @@ exports.uploadComplete = async (req, res) => {
       user: req.user.id,
       s3Key: s3Key,
       s3Bucket: process.env.S3_BUCKET_NAME,
-      uploadMethod: 's3_presigned'
+      uploadMethod: 's3_presigned',
+      category: validation.category || 'other',
+      subtype: validation.subtype
     });
 
     await file.save();

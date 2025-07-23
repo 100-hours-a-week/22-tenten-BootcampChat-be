@@ -1,6 +1,7 @@
 const AWS = require('aws-sdk');
 const crypto = require('crypto');
 const path = require('path');
+const { FileTypeValidator } = require('../../shared/fileTypeConfig');
 
 class S3Service {
   constructor() {
@@ -13,24 +14,7 @@ class S3Service {
 
     this.bucketName = process.env.S3_BUCKET_NAME;
     this.presignedUrlExpiry = parseInt(process.env.S3_PRESIGNED_URL_EXPIRY || '900'); // 15분 기본값
-    this.maxFileSize = 50 * 1024 * 1024; // 50MB
-
-    // 허용된 파일 타입 설정
-    this.allowedTypes = {
-      'image/jpeg': { extensions: ['.jpg', '.jpeg'], maxSize: 10 * 1024 * 1024 },
-      'image/png': { extensions: ['.png'], maxSize: 10 * 1024 * 1024 },
-      'image/gif': { extensions: ['.gif'], maxSize: 10 * 1024 * 1024 },
-      'image/webp': { extensions: ['.webp'], maxSize: 10 * 1024 * 1024 },
-      'video/mp4': { extensions: ['.mp4'], maxSize: 50 * 1024 * 1024 },
-      'video/webm': { extensions: ['.webm'], maxSize: 50 * 1024 * 1024 },
-      'video/quicktime': { extensions: ['.mov'], maxSize: 50 * 1024 * 1024 },
-      'audio/mpeg': { extensions: ['.mp3'], maxSize: 20 * 1024 * 1024 },
-      'audio/wav': { extensions: ['.wav'], maxSize: 20 * 1024 * 1024 },
-      'audio/ogg': { extensions: ['.ogg'], maxSize: 20 * 1024 * 1024 },
-      'application/pdf': { extensions: ['.pdf'], maxSize: 20 * 1024 * 1024 },
-      'application/msword': { extensions: ['.doc'], maxSize: 20 * 1024 * 1024 },
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { extensions: ['.docx'], maxSize: 20 * 1024 * 1024 }
-    };
+    this.maxFileSize = 100 * 1024 * 1024; // 100MB (increased for video/archive files)
   }
 
   /**
@@ -46,35 +30,10 @@ class S3Service {
   }
 
   /**
-   * 파일 타입 및 크기 검증
+   * 파일 타입 및 크기 검증 (shared validation 사용)
    */
   validateFile(mimetype, fileSize, filename) {
-    const typeConfig = this.allowedTypes[mimetype];
-    
-    if (!typeConfig) {
-      return {
-        valid: false,
-        error: '지원하지 않는 파일 형식입니다.'
-      };
-    }
-
-    if (fileSize > typeConfig.maxSize) {
-      const maxSizeMB = Math.floor(typeConfig.maxSize / 1024 / 1024);
-      return {
-        valid: false,
-        error: `파일 크기는 ${maxSizeMB}MB를 초과할 수 없습니다.`
-      };
-    }
-
-    const ext = path.extname(filename).toLowerCase();
-    if (!typeConfig.extensions.includes(ext)) {
-      return {
-        valid: false,
-        error: '파일 확장자가 올바르지 않습니다.'
-      };
-    }
-
-    return { valid: true };
+    return FileTypeValidator.validateFile(mimetype, fileSize, filename);
   }
 
   /**
