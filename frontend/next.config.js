@@ -7,6 +7,8 @@ const nextConfig = {
     buildActivity: true,
     buildActivityPosition: 'bottom-right'
   },
+  // 정적 export를 위한 옵션 추가!
+  output: 'export',
   // 개발 환경에서만 더 자세한 에러 로깅
   ...(process.env.NODE_ENV === 'development' && {
     experimental: {
