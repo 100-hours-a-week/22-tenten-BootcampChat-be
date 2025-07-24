@@ -26,10 +26,38 @@ const MessageSchema = new mongoose.Schema({
     index: true
   },
   file: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'File',
-    required: function() {
-      return this.type === 'file';
+    filename: {
+      type: String,
+      required: function() { return this.type === 'file'; }
+    },
+    originalname: {
+      type: String,
+      required: function() { return this.type === 'file'; }
+    },
+    mimetype: {
+      type: String,
+      required: function() { return this.type === 'file'; }
+    },
+    size: {
+      type: Number,
+      required: function() { return this.type === 'file'; }
+    },
+    s3Url: {
+      type: String,
+      required: function() { return this.type === 'file'; }
+    },
+    s3Key: {
+      type: String,
+      required: function() { return this.type === 'file'; }
+    },
+    s3Bucket: {
+      type: String,
+      required: function() { return this.type === 'file'; }
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+      required: function() { return this.type === 'file'; }
     }
   },
   aiType: {
@@ -197,10 +225,8 @@ MessageSchema.methods.softDelete = async function() {
 // 메시지 삭제 전 후크 개선
 MessageSchema.pre('remove', async function(next) {
   try {
-    if (this.type === 'file' && this.file) {
-      const File = mongoose.model('File');
-      await File.findByIdAndDelete(this.file);
-    }
+    // File 테이블이 제거되었으므로 별도 처리 불필요
+    // S3 파일은 수동으로 정리하거나 별도 스케줄러로 처리
     next();
   } catch (error) {
     console.error('Message pre-remove error:', {
