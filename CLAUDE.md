@@ -99,6 +99,20 @@ This is a real-time chat application built with:
 - File upload validation and size limits
 - Rate limiting and input validation
 
+### Error Handling System
+- **Global Error Handler**: Catches JavaScript runtime errors, Promise rejections, and resource loading failures
+- **Global Error Modal**: `.alert-danger` styled modal that automatically closes after 1 second
+- **Error Service API**: Unified API for showing error modals from anywhere in the code
+- **Axios Integration**: Automatic error handling for network requests and API errors
+- **Error Types**: API, network, validation, file, runtime, and manual error categories
+- **Duplicate Prevention**: Prevents showing the same error multiple times within 2 seconds
+
+#### E2E Testing Compatibility
+- E2E tests use CSS selectors for component interaction
+- Frontend components must maintain specific CSS classes and data-testid attributes
+- **Critical Rule**: Never modify E2E test code - only modify frontend to match test expectations
+- Tests rely on elements like `span._3U8yo._32yag.font-medium`, `.chat-input-textarea`, etc.
+
 ### File Handling
 - Supports images (jpg, png, gif), videos (mp4, webm), audio (mp3, wav), and PDFs
 - Files stored in `/backend/uploads` with unique naming
