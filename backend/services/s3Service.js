@@ -33,6 +33,17 @@ class S3Service {
    * 파일 타입 및 크기 검증 (shared validation 사용)
    */
   validateFile(mimetype, fileSize, filename) {
+    // 글로벌 파일 크기 제한 검증 (프론트엔드와 일치)
+    if (fileSize > this.maxFileSize) {
+      const maxSizeMB = Math.floor(this.maxFileSize / 1024 / 1024);
+      return {
+        valid: false,
+        error: `파일 크기는 ${maxSizeMB}MB를 초과할 수 없습니다.`,
+        category: 'other'
+      };
+    }
+
+    // 공유된 검증 로직 사용
     return FileTypeValidator.validateFile(mimetype, fileSize, filename);
   }
 
@@ -53,12 +64,7 @@ class S3Service {
         Bucket: this.bucketName,
         Key: s3Key,
         Expires: this.presignedUrlExpiry,
-        ContentType: mimetype,
-        ContentLength: fileSize,
-        Conditions: [
-          ['content-length-range', 1, fileSize], // 파일 크기 제한
-          ['eq', '$Content-Type', mimetype], // MIME 타입 제한
-        ]
+        ContentType: mimetype
       };
 
       const uploadUrl = await this.s3.getSignedUrlPromise('putObject', params);

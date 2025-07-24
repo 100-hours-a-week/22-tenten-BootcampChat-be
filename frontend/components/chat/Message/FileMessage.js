@@ -34,12 +34,19 @@ const FileMessage = ({
 
   useEffect(() => {
     if (msg?.file) {
-      const url = fileService.getPreviewUrl(msg.file, true);
+      // S3 전용 아키텍처: S3 URL 직접 사용
+      const url = msg.file.s3Url || '';
       setPreviewUrl(url);
       console.debug('Preview URL generated:', {
         filename: msg.file.filename,
+        s3Url: msg.file.s3Url,
         url
       });
+      
+      if (!msg.file.s3Url) {
+        console.error('File without S3 URL - local files are no longer supported:', msg.file);
+        setError('파일 URL이 없습니다. S3 업로드를 사용해주세요.');
+      }
     }
   }, [msg?.file]);
 
@@ -134,21 +141,15 @@ const FileMessage = ({
     setError(null);
     
     try {
-      if (!msg.file?.filename) {
-        throw new Error('파일 정보가 없습니다.');
+      if (!msg.file?.s3Url) {
+        throw new Error('파일 URL이 없습니다.');
       }
 
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
-      }
-
-      const baseUrl = fileService.getFileUrl(msg.file.filename, false);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user.token)}&sessionId=${encodeURIComponent(user.sessionId)}&download=true`;
-
+      // S3 전용 아키텍처: S3 URL 직접 사용
       const link = document.createElement('a');
-      link.href = authenticatedUrl;
+      link.href = msg.file.s3Url;
       link.download = getDecodedFilename(msg.file.originalname);
+      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -165,19 +166,12 @@ const FileMessage = ({
     setError(null);
 
     try {
-      if (!msg.file?.filename) {
-        throw new Error('파일 정보가 없습니다.');
+      if (!msg.file?.s3Url) {
+        throw new Error('파일 URL이 없습니다.');
       }
 
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
-      }
-
-      const baseUrl = fileService.getFileUrl(msg.file.filename, true);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user.token)}&sessionId=${encodeURIComponent(user.sessionId)}`;
-
-      const newWindow = window.open(authenticatedUrl, '_blank');
+      // S3 전용 아키텍처: S3 URL 직접 사용
+      const newWindow = window.open(msg.file.s3Url, '_blank');
       if (!newWindow) {
         throw new Error('팝업이 차단되었습니다. 팝업 차단을 해제해주세요.');
       }
@@ -190,25 +184,20 @@ const FileMessage = ({
 
   const renderImagePreview = (originalname) => {
     try {
-      if (!msg?.file?.filename) {
+      if (!msg?.file?.s3Url) {
+        console.error('S3 URL missing for image file:', msg?.file);
         return (
           <div className="flex items-center justify-center h-full bg-gray-100">
             <Image className="w-8 h-8 text-gray-400" />
+            <span className="ml-2 text-sm text-gray-500">이미지 URL 없음</span>
           </div>
         );
       }
 
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
-      }
-
-      const previewUrl = fileService.getPreviewUrl(msg.file, true);
-
       return (
         <div className="bg-transparent-pattern">
           <img 
-            src={previewUrl}
+            src={msg.file.s3Url}
             alt={originalname}
             className="object-cover rounded-sm"
             onLoad={() => {
@@ -217,7 +206,9 @@ const FileMessage = ({
             onError={(e) => {
               console.error('Image load error:', {
                 error: e.error,
-                originalname
+                originalname,
+                src: e.target.src,
+                s3Url: msg.file.s3Url
               });
               e.target.onerror = null; 
               e.target.src = '/images/placeholder-image.png';
@@ -324,21 +315,21 @@ const FileMessage = ({
       return (
         <div className={previewWrapperClass}>
           <div>
-            {previewUrl ? (
+            {msg.file.s3Url ? (
               <video 
                 className="object-cover rounded-sm"
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 비디오`}
-                crossOrigin="use-credentials"
               >
-                <source src={previewUrl} type={mimetype} />
+                <source src={msg.file.s3Url} type={mimetype} />
                 <track kind="captions" />
                 비디오를 재생할 수 없습니다.
               </video>
             ) : (
               <div className="flex items-center justify-center h-full">
                 <Film className="w-8 h-8 text-gray-400" />
+                <span className="ml-2 text-sm text-gray-500">비디오 URL 없음</span>
               </div>
             )}
           </div>
@@ -369,17 +360,20 @@ const FileMessage = ({
             </div>
           </div>
           <div className="px-3 pb-3">
-            {previewUrl && (
+            {msg.file.s3Url ? (
               <audio 
                 className="w-full"
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 오디오`}
-                crossOrigin="use-credentials"
               >
-                <source src={previewUrl} type={mimetype} />
+                <source src={msg.file.s3Url} type={mimetype} />
                 오디오를 재생할 수 없습니다.
               </audio>
+            ) : (
+              <div className="text-center text-gray-500">
+                오디오 URL이 없습니다.
+              </div>
             )}
           </div>
           <FileActions />

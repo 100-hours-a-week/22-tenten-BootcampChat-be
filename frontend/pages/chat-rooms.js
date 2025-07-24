@@ -5,6 +5,7 @@ import { LockIcon, ErrorCircleIcon, NetworkIcon, RefreshOutlineIcon, GroupIcon }
 import { Button, Card, Text, Badge, Callout } from '@vapor-ui/core';
 import { Flex, HStack, Stack, Box } from '../components/ui/Layout';
 import { StyledTable, StyledTableHead, StyledTableBody, StyledTableRow, StyledTableHeader, StyledTableCell } from '../components/ui/StyledTable';
+import PasswordModal from '../components/modals/PasswordModal';
 import socketService from '../services/socket';
 import authService from '../services/authService';
 import axiosInstance from '../services/axios';
@@ -179,6 +180,14 @@ function ChatRoomsComponent() {
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [joiningRoom, setJoiningRoom] = useState(false);
+  // Password modal states
+  const [passwordModal, setPasswordModal] = useState({
+    isOpen: false,
+    roomId: null,
+    roomName: '',
+    isLoading: false,
+    error: null
+  });
 
   // Refs
   const socketRef = useRef(null);
@@ -558,7 +567,36 @@ function ChatRoomsComponent() {
     };
   }, [currentUser, handleAuthError]);
 
-  const handleJoinRoom = async (roomId) => {
+  // 새로운 방 접근 핸들러 - 비밀번호 체크를 먼저 함
+  const handleRoomAccess = (roomId) => {
+    const room = rooms.find(r => r._id === roomId);
+    
+    if (!room) {
+      setError({
+        title: '채팅방 입장 실패',
+        message: '채팅방을 찾을 수 없습니다.',
+        type: 'danger'
+      });
+      return;
+    }
+
+    // 비밀번호가 있는 방이면 모달 즉시 표시
+    if (room.hasPassword) {
+      setPasswordModal({
+        isOpen: true,
+        roomId: roomId,
+        roomName: room.name,
+        isLoading: false,
+        error: null
+      });
+      return;
+    }
+
+    // 비밀번호가 없는 방이면 바로 입장 시도
+    handleJoinRoom(roomId);
+  };
+
+  const handleJoinRoom = async (roomId, password = null) => {
     if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
       setError({
         title: '채팅방 입장 실패',
@@ -571,21 +609,53 @@ function ChatRoomsComponent() {
     setJoiningRoom(true);
 
     try {
-      const response = await axiosInstance.post(`/api/rooms/${roomId}/join`, {}, {
+      const requestBody = password ? { password } : {};
+      const response = await axiosInstance.post(`/api/rooms/${roomId}/join`, requestBody, {
         timeout: 5000
       });
       
       if (response.data.success) {
+        // 비밀번호 모달이 열려있다면 닫기
+        if (passwordModal.isOpen) {
+          setPasswordModal({
+            isOpen: false,
+            roomId: null,
+            roomName: '',
+            isLoading: false,
+            error: null
+          });
+        }
         router.push(`/chat?room=${roomId}`);
       }
     } catch (error) {
       console.error('Room join error:', error);
       
       let errorMessage = '입장에 실패했습니다.';
+      
       if (error.response?.status === 404) {
         errorMessage = '채팅방을 찾을 수 없습니다.';
       } else if (error.response?.status === 403) {
         errorMessage = '채팅방 입장 권한이 없습니다.';
+      } else if (error.response?.status === 401) {
+        // 비밀번호가 틀린 경우 (모달이 이미 열려있는 상태)
+        if (passwordModal.isOpen) {
+          const errorMsg = error.response?.data?.message || '비밀번호가 일치하지 않습니다.';
+          setPasswordModal(prev => ({
+            ...prev,
+            isLoading: false,
+            error: errorMsg
+          }));
+          Toast.error(errorMsg);
+          return; // 에러 메시지는 모달에서 처리하므로 여기서 종료
+        } else {
+          errorMessage = '이 채팅방은 비밀번호로 보호되어 있습니다.';
+        }
+      } else if (error.response?.status >= 500) {
+        errorMessage = '서버에 일시적인 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = '요청 시간이 초과되었습니다. 인터넷 연결을 확인해주세요.';
+      } else if (!error.response) {
+        errorMessage = '네트워크 연결을 확인해주세요.';
       }
       
       setError({
@@ -594,8 +664,35 @@ function ChatRoomsComponent() {
         type: 'danger'
       });
     } finally {
-      setJoiningRoom(false);
+      if (!passwordModal.isOpen) {
+        setJoiningRoom(false);
+      }
     }
+  };
+
+  // 비밀번호 모달 핸들러들
+  const handlePasswordModalClose = () => {
+    setPasswordModal({
+      isOpen: false,
+      roomId: null,
+      roomName: '',
+      isLoading: false,
+      error: null
+    });
+    setJoiningRoom(false);
+  };
+
+  const handlePasswordSubmit = async (password) => {
+    if (!passwordModal.roomId) return;
+
+    setPasswordModal(prev => ({
+      ...prev,
+      isLoading: true,
+      error: null
+    }));
+
+    // 비밀번호와 함께 채팅방 입장 시도
+    await handleJoinRoom(passwordModal.roomId, password);
   };
 
   const renderRoomsTable = () => {
@@ -645,7 +742,7 @@ function ChatRoomsComponent() {
                   color="primary"
                   variant="outline"
                   size="md"
-                  onClick={() => handleJoinRoom(room._id)}
+                  onClick={() => handleRoomAccess(room._id)}
                   disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
                 >
                   입장
@@ -755,7 +852,7 @@ function ChatRoomsComponent() {
         </Card.Body>
       </Card.Root>
       
-      {joiningRoom && (
+      {joiningRoom && !passwordModal.isOpen && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -776,6 +873,16 @@ function ChatRoomsComponent() {
           </Stack>
         </div>
       )}
+
+      {/* 비밀번호 입력 모달 */}
+      <PasswordModal
+        isOpen={passwordModal.isOpen}
+        onClose={handlePasswordModalClose}
+        onSubmit={handlePasswordSubmit}
+        roomName={passwordModal.roomName}
+        isLoading={passwordModal.isLoading}
+        error={passwordModal.error}
+      />
     </div>
   );
 }

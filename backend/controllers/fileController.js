@@ -1,4 +1,4 @@
-const File = require('../models/File');
+// File 모델은 더 이상 사용하지 않음 - Message 모델에 파일 정보 직접 저장
 const Message = require('../models/Message');
 const Room = require('../models/Room');
 const { processFileForRAG } = require('../services/fileService');
@@ -31,241 +31,66 @@ const generateSafeFilename = (originalFilename) => {
   return `${timestamp}_${randomBytes}${ext}`;
 };
 
-// 개선된 파일 정보 조회 함수
-const getFileFromRequest = async (req) => {
-  try {
-    const filename = req.params.filename;
-    const token = req.headers['x-auth-token'] || req.query.token;
-    const sessionId = req.headers['x-session-id'] || req.query.sessionId;
-    
-    if (!filename) {
-      throw new Error('Invalid filename');
-    }
+// 레거시 로컬 파일 함수 제거됨 - S3 전용 아키텍처
 
-    if (!token || !sessionId) {
-      throw new Error('Authentication required');
-    }
-
-    const filePath = path.join(uploadDir, filename);
-    if (!isPathSafe(filePath, uploadDir)) {
-      throw new Error('Invalid file path');
-    }
-
-    await fsPromises.access(filePath, fs.constants.R_OK);
-
-    const file = await File.findOne({ filename: filename });
-    if (!file) {
-      throw new Error('File not found in database');
-    }
-
-    // 채팅방 권한 검증을 위한 메시지 조회
-    const message = await Message.findOne({ file: file._id });
-    if (!message) {
-      throw new Error('File message not found');
-    }
-
-    // 사용자가 해당 채팅방의 참가자인지 확인
-    const room = await Room.findOne({
-      _id: message.room,
-      participants: req.user.id
-    });
-
-    if (!room) {
-      throw new Error('Unauthorized access');
-    }
-
-    return { file, filePath };
-  } catch (error) {
-    console.error('getFileFromRequest error:', {
-      filename: req.params.filename,
-      error: error.message
-    });
-    throw error;
-  }
-};
-
+// 로컬 업로드 함수 제거됨 - S3 전용 아키텍처
 exports.uploadFile = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: '파일이 선택되지 않았습니다.'
-      });
-    }
-
-    const safeFilename = generateSafeFilename(req.file.originalname);
-    const currentPath = req.file.path;
-    const newPath = path.join(uploadDir, safeFilename);
-
-    // Get file type validation info
-    const validation = FileTypeValidator.validateFile(req.file.mimetype, req.file.size, req.file.originalname);
-
-    const file = new File({
-      filename: safeFilename,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      user: req.user.id,
-      path: newPath,
-      category: validation.category || 'other',
-      subtype: validation.subtype,
-      uploadMethod: 'local'
-    });
-
-    await file.save();
-    await fsPromises.rename(currentPath, newPath);
-
-    res.status(200).json({
-      success: true,
-      message: '파일 업로드 성공',
-      file: {
-        _id: file._id,
-        filename: file.filename,
-        originalname: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size,
-        uploadDate: file.uploadDate
-      }
-    });
-
-  } catch (error) {
-    console.error('File upload error:', error);
-    if (req.file?.path) {
-      try {
-        await fsPromises.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('Failed to delete uploaded file:', unlinkError);
-      }
-    }
-    res.status(500).json({
-      success: false,
-      message: '파일 업로드 중 오류가 발생했습니다.',
-      error: error.message
-    });
-  }
-};
-
-exports.downloadFile = async (req, res) => {
-  try {
-    const { file, filePath } = await getFileFromRequest(req);
-    
-    // Track download
-    await file.incrementDownloadCount();
-    
-    const contentDisposition = file.getContentDisposition('attachment');
-
-    res.set({
-      'Content-Type': file.mimetype,
-      'Content-Length': file.size,
-      'Content-Disposition': contentDisposition,
-      'Cache-Control': 'private, no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0'
-    });
-
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.on('error', (error) => {
-      console.error('File streaming error:', error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: '파일 스트리밍 중 오류가 발생했습니다.'
-        });
-      }
-    });
-
-    fileStream.pipe(res);
-
-  } catch (error) {
-    handleFileError(error, res);
-  }
-};
-
-exports.viewFile = async (req, res) => {
-  try {
-    const { file, filePath } = await getFileFromRequest(req);
-
-    if (!file.isPreviewable()) {
-      return res.status(415).json({
-        success: false,
-        message: '미리보기를 지원하지 않는 파일 형식입니다.'
-      });
-    }
-
-    // Track view
-    await file.incrementViewCount();
-
-    const contentDisposition = file.getContentDisposition('inline');
-        
-    res.set({
-      'Content-Type': file.mimetype,
-      'Content-Disposition': contentDisposition,
-      'Content-Length': file.size,
-      'Cache-Control': 'public, max-age=31536000, immutable'
-    });
-
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.on('error', (error) => {
-      console.error('File streaming error:', error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: '파일 스트리밍 중 오류가 발생했습니다.'
-        });
-      }
-    });
-
-    fileStream.pipe(res);
-
-  } catch (error) {
-    handleFileError(error, res);
-  }
-};
-
-const handleFileStream = (fileStream, res) => {
-  fileStream.on('error', (error) => {
-    console.error('File streaming error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({
-        success: false,
-        message: '파일 스트리밍 중 오류가 발생했습니다.'
-      });
-    }
+  res.status(501).json({
+    success: false,
+    message: '로컬 파일 업로드는 지원하지 않습니다. S3 업로드를 사용해주세요.'
   });
-
-  fileStream.pipe(res);
 };
+
+// 로컬 파일 다운로드 함수 제거됨 - S3 전용 아키텍처
+exports.downloadFile = async (req, res) => {
+  res.status(501).json({
+    success: false,
+    message: '로컬 파일 다운로드는 지원하지 않습니다. S3 다운로드를 사용해주세요.'
+  });
+};
+
+// 로컬 파일 보기 함수 제거됨 - S3 전용 아키텍처
+exports.viewFile = async (req, res) => {
+  res.status(501).json({
+    success: false,
+    message: '로컬 파일 보기는 지원하지 않습니다. S3 URL을 직접 사용해주세요.'
+  });
+};
+
+// 로컬 파일 스트리밍 함수 제거됨 - S3 전용 아키텍처
 
 // S3 다운로드 URL 생성
 exports.getS3DownloadUrl = async (req, res) => {
   try {
-    const file = await File.findOne({ filename: req.params.filename });
+    const filename = req.params.filename;
     
-    if (!file) {
+    // Message에서 파일 정보 조회
+    const message = await Message.findOne({ 'file.filename': filename });
+    
+    if (!message || !message.file) {
       return res.status(404).json({
         success: false,
         message: '파일을 찾을 수 없습니다.'
       });
     }
 
-    // 채팅방 권한 검증
-    const message = await Message.findOne({ file: file._id });
-    if (message) {
-      const room = await Room.findOne({
-        _id: message.room,
-        participants: req.user.id
-      });
+    const file = message.file;
 
-      if (!room) {
-        return res.status(403).json({
-          success: false,
-          message: '파일에 접근할 권한이 없습니다.'
-        });
-      }
+    // 채팅방 권한 검증
+    const room = await Room.findOne({
+      _id: message.room,
+      participants: req.user.id
+    });
+
+    if (!room) {
+      return res.status(403).json({
+        success: false,
+        message: '파일에 접근할 권한이 없습니다.'
+      });
     }
 
     // S3 파일인 경우 presigned URL 생성
-    if (file.isS3File()) {
+    if (file.s3Key) {
       const downloadData = await s3Service.generatePresignedDownloadUrl(
         file.s3Key,
         file.originalname
@@ -278,7 +103,7 @@ exports.getS3DownloadUrl = async (req, res) => {
       });
     }
 
-    // 로컬 파일인 경우 일반 다운로드 URL
+    // 로컬 파일인 경우 일반 다운로드 URL (레거시)
     const downloadUrl = `${req.protocol}://${req.get('host')}/api/files/download/${file.filename}`;
     res.json({
       success: true,
@@ -296,63 +121,42 @@ exports.getS3DownloadUrl = async (req, res) => {
 // S3 미리보기 URL 생성
 exports.getS3ViewUrl = async (req, res) => {
   try {
-    const file = await File.findOne({ filename: req.params.filename });
+    const filename = req.params.filename;
     
-    if (!file) {
+    // Message에서 파일 정보 조회
+    const message = await Message.findOne({ 'file.filename': filename });
+    
+    if (!message || !message.file) {
       return res.status(404).json({
         success: false,
         message: '파일을 찾을 수 없습니다.'
       });
     }
 
-    if (!file.isPreviewable()) {
-      return res.status(415).json({
-        success: false,
-        message: '미리보기를 지원하지 않는 파일 형식입니다.'
-      });
-    }
+    const file = message.file;
 
     // 채팅방 권한 검증
-    const message = await Message.findOne({ file: file._id });
-    if (message) {
-      const room = await Room.findOne({
-        _id: message.room,
-        participants: req.user.id
-      });
+    const room = await Room.findOne({
+      _id: message.room,
+      participants: req.user.id
+    });
 
-      if (!room) {
-        return res.status(403).json({
-          success: false,
-          message: '파일에 접근할 권한이 없습니다.'
-        });
-      }
+    if (!room) {
+      return res.status(403).json({
+        success: false,
+        message: '파일에 접근할 권한이 없습니다.'
+      });
     }
 
-    // S3 파일인 경우 공개 URL 또는 presigned URL
-    if (file.isS3File()) {
-      // 공개 버킷인 경우 직접 URL 사용 가능
-      const publicUrl = file.getS3PublicUrl();
-      if (publicUrl) {
-        return res.json({
-          success: true,
-          viewUrl: publicUrl
-        });
-      }
-      
-      // 비공개 버킷인 경우 presigned URL 사용
-      const viewData = await s3Service.generatePresignedDownloadUrl(
-        file.s3Key,
-        file.originalname
-      );
-      
+    // S3 파일인 경우 S3 URL 반환
+    if (file.s3Url) {
       return res.json({
         success: true,
-        viewUrl: viewData.downloadUrl,
-        expires: viewData.expires
+        viewUrl: file.s3Url
       });
     }
 
-    // 로컬 파일인 경우 일반 보기 URL
+    // 로컬 파일인 경우 (레거시)
     const viewUrl = `${req.protocol}://${req.get('host')}/api/files/view/${file.filename}`;
     res.json({
       success: true,
@@ -456,32 +260,23 @@ exports.uploadComplete = async (req, res) => {
     // Get file type validation info
     const validation = FileTypeValidator.validateFile(mimetype, verification.actualSize, originalname);
 
-    // 데이터베이스에 파일 정보 저장
-    const file = new File({
-      filename: filename,
-      originalname: originalname,
-      mimetype: mimetype,
-      size: verification.actualSize,
-      user: req.user.id,
-      s3Key: s3Key,
-      s3Bucket: process.env.S3_BUCKET_NAME,
-      uploadMethod: 's3_presigned',
-      category: validation.category || 'other',
-      subtype: validation.subtype
-    });
-
-    await file.save();
-
+    // S3 파일 정보를 직접 반환 (File 테이블 사용하지 않음)
+    const s3Url = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION || 'us-east-1'}.amazonaws.com/${s3Key}`;
+    
     res.json({
       success: true,
       message: '파일 업로드가 완료되었습니다.',
-      file: {
-        _id: file._id,
-        filename: file.filename,
-        originalname: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size,
-        uploadDate: file.uploadDate
+      data: {
+        filename: filename,
+        originalname: originalname,
+        mimetype: mimetype,
+        size: verification.actualSize,
+        s3Url: s3Url,
+        s3Key: s3Key,
+        s3Bucket: process.env.S3_BUCKET_NAME,
+        uploadedAt: new Date(),
+        category: validation.category || 'other',
+        subtype: validation.subtype
       }
     });
   } catch (error) {
@@ -496,53 +291,12 @@ exports.uploadComplete = async (req, res) => {
 
 exports.deleteFile = async (req, res) => {
   try {
-    const file = await File.findById(req.params.id);
-    
-    if (!file) {
-      return res.status(404).json({
-        success: false,
-        message: '파일을 찾을 수 없습니다.'
-      });
-    }
-
-    if (file.user.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: '파일을 삭제할 권한이 없습니다.'
-      });
-    }
-
-    // S3에서 삭제 (S3 업로드된 파일인 경우)
-    if (file.s3Key) {
-      try {
-        await s3Service.deleteFile(file.s3Key);
-      } catch (s3Error) {
-        console.error('S3 file deletion error:', s3Error);
-      }
-    } else {
-      // 로컬 파일 삭제 (레거시)
-      const filePath = path.join(uploadDir, file.filename);
-
-      if (!isPathSafe(filePath, uploadDir)) {
-        return res.status(403).json({
-          success: false,
-          message: '잘못된 파일 경로입니다.'
-        });
-      }
-      
-      try {
-        await fsPromises.access(filePath, fs.constants.W_OK);
-        await fsPromises.unlink(filePath);
-      } catch (unlinkError) {
-        console.error('Local file deletion error:', unlinkError);
-      }
-    }
-
-    await file.deleteOne();
-
-    res.json({
-      success: true,
-      message: '파일이 삭제되었습니다.'
+    // 새 아키텍처에서는 파일이 메시지에 직접 저장되므로
+    // 개별 파일 삭제는 지원하지 않습니다. 
+    // 메시지 삭제를 통해 파일도 함께 삭제됩니다.
+    res.status(501).json({
+      success: false,
+      message: '개별 파일 삭제는 지원하지 않습니다. 메시지를 삭제해주세요.'
     });
   } catch (error) {
     console.error('File deletion error:', error);

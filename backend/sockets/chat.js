@@ -1,7 +1,6 @@
 const Message = require('../models/Message');
 const Room = require('../models/Room');
 const User = require('../models/User');
-const File = require('../models/File');
 const jwt = require('jsonwebtoken');
 const { jwtSecret } = require('../config/keys');
 const redisClient = require('../utils/redisClient');
@@ -48,10 +47,6 @@ module.exports = function(io) {
       const messages = await Promise.race([
         Message.find(query)
           .populate('sender', 'name email profileImage')
-          .populate({
-            path: 'file',
-            select: 'filename originalname mimetype size'
-          })
           .sort({ timestamp: -1 })
           .limit(limit + 1)
           .lean(),
@@ -490,31 +485,39 @@ module.exports = function(io) {
         // 메시지 타입별 처리
         switch (type) {
           case 'file':
-            if (!fileData || !fileData._id) {
+            if (!fileData) {
               throw new Error('파일 데이터가 올바르지 않습니다.');
             }
 
-            const file = await File.findOne({
-              _id: fileData._id,
-              user: socket.user.id
-            });
-
-            if (!file) {
-              throw new Error('파일을 찾을 수 없거나 접근 권한이 없습니다.');
+            // fileData에서 필요한 정보 검증
+            const requiredFields = ['filename', 'originalname', 'mimetype', 'size', 's3Url', 's3Key', 's3Bucket'];
+            for (const field of requiredFields) {
+              if (!fileData[field]) {
+                throw new Error(`파일 정보가 불완전합니다: ${field} 누락`);
+              }
             }
 
             message = new Message({
               room,
               sender: socket.user.id,
               type: 'file',
-              file: file._id,
+              file: {
+                filename: fileData.filename,
+                originalname: fileData.originalname,
+                mimetype: fileData.mimetype,
+                size: fileData.size,
+                s3Url: fileData.s3Url,
+                s3Key: fileData.s3Key,
+                s3Bucket: fileData.s3Bucket,
+                uploadedAt: new Date()
+              },
               content: content || '',
               timestamp: new Date(),
               reactions: {},
               metadata: {
-                fileType: file.mimetype,
-                fileSize: file.size,
-                originalName: file.originalname
+                fileType: fileData.mimetype,
+                fileSize: fileData.size,
+                originalName: fileData.originalname
               }
             });
             break;
@@ -541,8 +544,7 @@ module.exports = function(io) {
 
         await message.save();
         await message.populate([
-          { path: 'sender', select: 'name email profileImage' },
-          { path: 'file', select: 'filename originalname mimetype size' }
+          { path: 'sender', select: 'name email profileImage' }
         ]);
 
         io.to(room).emit('message', message);

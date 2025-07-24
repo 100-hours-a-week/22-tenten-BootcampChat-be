@@ -13,12 +13,22 @@ const PersistentAvatar = forwardRef(({
   const [currentImage, setCurrentImage] = useState('');
   const [imageError, setImageError] = useState(false);
 
-  // getProfileImageUrl 함수 memoization
+  // getProfileImageUrl 함수 memoization (로컬/S3 호환)
   const getProfileImageUrl = useCallback((imagePath) => {
     if (!imagePath) return null;
-    return imagePath.startsWith('http') ? 
-      imagePath : 
-      `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
+    
+    // S3 URL인 경우 (https:// 로 시작)
+    if (imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+    
+    // 레거시 로컬 이미지인 경우 (/uploads/ 로 시작)
+    if (imagePath.startsWith('/uploads/')) {
+      return `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
+    }
+    
+    // 기타 상대 경로인 경우
+    return `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
   }, []);
 
   // 프로필 이미지 URL 처리
