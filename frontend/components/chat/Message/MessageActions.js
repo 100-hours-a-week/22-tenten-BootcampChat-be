@@ -153,6 +153,8 @@ const MessageActions = ({
                 <span className="reaction-emoji">{emoji}</span>
                 <span className="reaction-count">{users.length}</span>
               </Button>
+              {/* 리액션 배지를 위한 추가 요소 */}
+              <div className="reaction-badge" style={{ display: 'none' }}></div>
             </React.Fragment>
           );
         })}
@@ -205,10 +207,13 @@ const MessageActions = ({
           <div style={{ position: 'relative' }}>
             <IconButton
               ref={emojiButtonRef}
+              className="action-button"
               size="sm"
               variant="outline"
               onClick={toggleEmojiPicker}
               aria-label="리액션 추가"
+              title="리액션 추가"
+              data-testid="action-button"
             >
               <LikeIcon size={16} />
             </IconButton>

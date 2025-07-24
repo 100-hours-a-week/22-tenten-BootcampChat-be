@@ -144,7 +144,7 @@ const TableWrapper = ({ children, onScroll, loadingMore, hasMore, rooms }) => {
       {children}
       {loadingMore && (
         <div className="flex items-center justify-center gap-2 p-4 border-t border-gray-700">
-          <LoadingIndicator text="추가 채팅방을 불러오는 중..." />
+          <LoadingIndicator text="추가 채팅방을 로딩 중..." />
         </div>
       )}
       {!hasMore && rooms?.length > 0 && (
@@ -224,7 +224,7 @@ function ChatRoomsComponent() {
   }, [router]);
 
   const handleFetchError = useCallback((error, isLoadingMore) => {
-    let errorMessage = '채팅방 목록을 불러오는데 실패했습니다.';
+    let errorMessage = '채팅방을 불러오는데 실패했습니다.';
     let errorType = 'danger';
     let showRetry = !isRetrying;
 
@@ -245,7 +245,7 @@ function ChatRoomsComponent() {
 
     if (!isLoadingMore) {
       setError({
-        title: '채팅방 목록 로드 실패',
+        title: '채팅방 로드 실패',
         message: errorMessage,
         type: errorType,
         showRetry
@@ -645,7 +645,7 @@ function ChatRoomsComponent() {
             isLoading: false,
             error: errorMsg
           }));
-          Toast.error(errorMsg);
+          // Toast 제거 - 전역 모달에서 처리
           return; // 에러 메시지는 모달에서 처리하므로 여기서 종료
         } else {
           errorMessage = '이 채팅방은 비밀번호로 보호되어 있습니다.';
@@ -658,11 +658,8 @@ function ChatRoomsComponent() {
         errorMessage = '네트워크 연결을 확인해주세요.';
       }
       
-      setError({
-        title: '채팅방 입장 실패',
-        message: error.response?.data?.message || errorMessage,
-        type: 'danger'
-      });
+      // setError 제거 - 전역 모달에서 처리
+      // 기존 에러 표시는 제거하고 전역 모달로만 처리
     } finally {
       if (!passwordModal.isOpen) {
         setJoiningRoom(false);
@@ -762,7 +759,7 @@ function ChatRoomsComponent() {
         
         <Card.Body className="card-body">
           <Stack gap="300" align="center">
-            <Text typography="heading3">채팅방 목록</Text>
+            <Text typography="heading3" data-testid="page-title">채팅방 목록</Text>
             <HStack gap="200">
               <Badge color={STATUS_CONFIG[connectionStatus].color === 'success' ? 'success' : STATUS_CONFIG[connectionStatus].color === 'warning' ? 'warning' : 'danger'}>
                 {STATUS_CONFIG[connectionStatus].label}
@@ -824,7 +821,7 @@ function ChatRoomsComponent() {
           
           {loading ? (
             <Box mt="400">
-              <LoadingIndicator text="채팅방 목록을 불러오는 중..." />
+              <LoadingIndicator text="채팅방을 불러오는 중..." />
             </Box>
           ) : rooms.length > 0 ? (
             <Box mt="400">

@@ -88,7 +88,7 @@ const Navbar = () => {
                   size="md"
                   onClick={() => handleNavigation('/chat-rooms')}
                 >
-                  채팅방 목록
+                  채팅방
                 </Button>
                 <Button
                   color="primary"
