@@ -538,6 +538,7 @@ const ChatInput = forwardRef(
         <div
           className={`chat-input-wrapper ${isDragging ? 'dragging' : ''}`}
           ref={dropZoneRef}
+          data-testid="chat-input-wrapper"
           onDragEnter={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -567,7 +568,21 @@ const ChatInput = forwardRef(
                 showFileName={true}
                 showFileSize={true}
                 variant="default"
+                className="file-preview-item"
+                data-testid="file-preview-item"
               />
+            )}
+
+            {(uploading || uploadProgress > 0) && (
+              <div className="upload-progress" data-testid="upload-progress">
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <span className="progress-text">{uploadProgress}%</span>
+              </div>
             )}
 
             <div className="chat-input-toolbar">
@@ -621,6 +636,9 @@ const ChatInput = forwardRef(
                 onClick={handleSubmit}
                 disabled={isDisabled || (!message.trim() && files.length === 0)}
                 aria-label="메시지 보내기"
+                title="보내기"
+                className="send-button"
+                data-testid="send-button"
                 style={{
                   position: 'absolute',
                   bottom: '8px',

@@ -33,3 +33,4 @@ CLAUDE.md
 GEMINI.md
 .gemini/
 .mcp.json
+/e2e/playwright-report/

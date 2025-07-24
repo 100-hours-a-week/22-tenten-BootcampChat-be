@@ -712,7 +712,7 @@ function ChatRoomsComponent() {
           {rooms.map((room) => (
             <StyledTableRow key={room._id}>
               <StyledTableCell>
-                <Text typography="body1" style={{ fontWeight: 500, marginBottom: 'var(--vapor-space-050)' }}>{room.name}</Text>
+                <span className="_3U8yo _32yag font-medium" style={{ fontWeight: 500, marginBottom: 'var(--vapor-space-050)' }}>{room.name}</span>
                 {room.hasPassword && (
                   <HStack gap="050" align="center">
                     <LockIcon size={16} style={{ color: 'var(--vapor-color-warning)' }} />

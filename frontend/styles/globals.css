@@ -1470,6 +1470,21 @@ pre {
   line-height: 1;
 }
 
+/* Test-specific CSS classes for E2E testing */
+._3U8yo {
+  display: block;
+  line-height: 1.5;
+}
+
+._32yag {
+  color: var(--vapor-color-text-primary);
+  margin-bottom: var(--vapor-space-050);
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
 .bg-success {
   background-color: var(--vapor-color-success) !important;
 }
