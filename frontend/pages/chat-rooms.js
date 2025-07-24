@@ -624,6 +624,9 @@ function ChatRoomsComponent() {
             isLoading: false,
             error: null
           });
+          // 모달이 완전히 닫힐 때까지 잠시 대기 (예: 100ms)
+          // 이는 모달의 CSS transition/animation이 완료될 시간을 줍니다.
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         router.push(`/chat?room=${roomId}`);
       }
