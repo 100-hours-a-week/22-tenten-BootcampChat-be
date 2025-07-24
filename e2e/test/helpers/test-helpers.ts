@@ -23,6 +23,8 @@ interface RoomInfo {
   hasPassword: boolean;
 }
 
+type AIType = 'wayneAI' | 'consultingAI';
+
 export class TestHelpers {
   private aiService: AIService;
   private messageService: MessageService;
@@ -34,7 +36,7 @@ export class TestHelpers {
       apiKey,
       model: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
     });
-    this.messageService = new MessageService(apiKey);
+    this.messageService = new MessageService();
   }
 
   generateRoomName(prefix = 'Test') {
@@ -494,22 +496,7 @@ export class TestHelpers {
     }
   }
 
-  // 비밀번호 처리 개선
-  private async handleRoomPassword(page: Page, password: string, timeout: number) {
-    await page.waitForSelector('input[name="password"]', {
-      state: 'visible',
-      timeout
-    });
-
-    await Promise.all([
-      page.waitForNavigation({ 
-        timeout,
-        waitUntil: ['load', 'domcontentloaded', 'networkidle']
-      }),
-      page.fill('input[name="password"]', password),
-      page.click('button:has-text("입장")')
-    ]);
-  }
+  
 
   // 연결 상태 확인 메서드
   private async waitForConnection(page: Page, timeout: number): Promise<boolean> {
