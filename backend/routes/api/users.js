@@ -21,10 +21,9 @@ router.put('/profile',
   userController.updateProfile
 );
 
-// 프로필 이미지 업로드
+// 프로필 이미지 업로드 완료 처리 (S3 기반)
 router.post('/profile-image',
   auth,
-  upload.single('profileImage'),
   userController.uploadProfileImage
 );
 
