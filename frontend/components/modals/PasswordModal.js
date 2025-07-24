@@ -149,6 +149,7 @@ const PasswordModal = ({
                     placeholder="채팅방 비밀번호를 입력하세요"
                   >
                     <TextInput.Field
+                      name="password" // <-- name="password" 추가
                       onKeyDown={handleKeyDown}
                       autoFocus
                       style={{ paddingRight: '60px' }}

@@ -631,6 +631,7 @@ const ChatInput = forwardRef(
                 }}
               />
               <Button
+                type="submit" // <-- type="submit" 추가
                 color="primary"
                 size="md"
                 onClick={handleSubmit}
@@ -653,7 +654,7 @@ const ChatInput = forwardRef(
               </Button>
             </div>
 
-            <div className="chat-input-actions">
+            <div className="chat-input-actions" data-testid="chat-input-actions">
               {showEmojiPicker && (
                 <div
                   ref={emojiPickerRef}

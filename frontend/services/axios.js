@@ -1,6 +1,7 @@
 // frontend/services/axios.js
 import axios from 'axios';
 import authService from './authService';
+import errorService from '../utils/ErrorService';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -168,6 +169,11 @@ axiosInstance.interceptors.response.use(
         }
       };
       
+      // 네트워크 에러를 전역 에러 핸들러에 전달
+      if (typeof window !== 'undefined') {
+        errorService.showNetworkError('서버 통신');
+      }
+      
       throw customError;
     }
 
@@ -234,7 +240,7 @@ axiosInstance.interceptors.response.use(
       }
     };
 
-    // 401 에러 처리
+    // 401 에러 처리 - 세션 만료된 경우에만 리다이렉트
     if (status === 401) {
       try {
         const refreshed = await authService.refreshToken();
@@ -248,11 +254,21 @@ axiosInstance.interceptors.response.use(
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
-        authService.logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/?error=session_expired';
+        // 토큰 리프레시가 실패한 경우에만 로그아웃 및 리다이렉트
+        // 단순 비밀번호 틀림 등은 전역 모달로만 처리
+        if (refreshError?.response?.status === 401 && 
+            refreshError?.response?.data?.code === 'TOKEN_EXPIRED') {
+          authService.logout();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/?error=session_expired';
+          }
         }
       }
+    }
+
+    // 모든 에러를 전역 에러 핸들러에 전달 (401, 4xx, 5xx 모든 에러)
+    if (typeof window !== 'undefined') {
+      errorService.showApiError(error, '서버 요청');
     }
 
     throw enhancedError;
