@@ -538,6 +538,7 @@ const ChatInput = forwardRef(
         <div
           className={`chat-input-wrapper ${isDragging ? 'dragging' : ''}`}
           ref={dropZoneRef}
+          data-testid="chat-input-wrapper"
           onDragEnter={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -567,7 +568,21 @@ const ChatInput = forwardRef(
                 showFileName={true}
                 showFileSize={true}
                 variant="default"
+                className="file-preview-item"
+                data-testid="file-preview-item"
               />
+            )}
+
+            {(uploading || uploadProgress > 0) && (
+              <div className="upload-progress" data-testid="upload-progress">
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                <span className="progress-text">{uploadProgress}%</span>
+              </div>
             )}
 
             <div className="chat-input-toolbar">
@@ -616,11 +631,15 @@ const ChatInput = forwardRef(
                 }}
               />
               <Button
+                type="submit" // <-- type="submit" 추가
                 color="primary"
                 size="md"
                 onClick={handleSubmit}
                 disabled={isDisabled || (!message.trim() && files.length === 0)}
                 aria-label="메시지 보내기"
+                title="보내기"
+                className="send-button"
+                data-testid="send-button"
                 style={{
                   position: 'absolute',
                   bottom: '8px',
@@ -635,7 +654,7 @@ const ChatInput = forwardRef(
               </Button>
             </div>
 
-            <div className="chat-input-actions">
+            <div className="chat-input-actions" data-testid="chat-input-actions">
               {showEmojiPicker && (
                 <div
                   ref={emojiPickerRef}

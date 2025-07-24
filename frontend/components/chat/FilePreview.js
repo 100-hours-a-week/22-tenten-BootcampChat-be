@@ -251,7 +251,9 @@ const FilePreview = ({
       <div className={`${previewContainer} flex flex-col items-center justify-center`}
            role="img"
            aria-label={`${file.name} 파일 아이콘`}>
-        {getFileIcon(file)}
+        <div className="file-icon" data-testid="file-icon">
+          {getFileIcon(file)}
+        </div>
         {showFileName && (
           <span className="mt-2 text-xs text-gray-600 truncate max-w-[80px]">
             {file.type.split('/')[1].toUpperCase()}

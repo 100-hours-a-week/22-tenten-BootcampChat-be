@@ -243,7 +243,7 @@ const ChatPage = () => {
         <Card.Header className="chat-room-header">
           <Flex justify="space-between" align="center">
             <Flex align="center" gap="300">
-              <Text typography="heading4" style={{ fontWeight: 'bold' }} className="chat-room-title">
+              <Text typography="heading4" style={{ fontWeight: 'bold' }} className="chat-room-title" data-testid="chat-room-title">
                 {room.name}
               </Text>
               {renderParticipants()}

@@ -9,7 +9,7 @@ const DuplicateLoginModal = ({
   ipAddress,
   onTimeout 
 }) => {
-  const [timeLeft, setTimeLeft] = useState(10);
+  const [timeLeft, setTimeLeft] = useState(3);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -17,7 +17,7 @@ const DuplicateLoginModal = ({
     // 10초 카운트다운
     const timer = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
+        if (prev <= 0) {
           clearInterval(timer);
           onTimeout();
           return 0;
@@ -28,7 +28,7 @@ const DuplicateLoginModal = ({
 
     return () => {
       clearInterval(timer);
-      setTimeLeft(10);
+      setTimeLeft(3);
     };
   }, [isOpen, onTimeout]);
 
@@ -36,7 +36,7 @@ const DuplicateLoginModal = ({
 
   return (
     <>
-      <div className="modal fade show d-block" tabIndex="-1" role="dialog">
+      <div className="modal fade show d-block duplicate-login-modal" tabIndex="-1" role="dialog">
         <div className="modal-dialog modal-dialog-centered" role="document">
           <div className="modal-content">
             <div className="modal-header">
@@ -81,12 +81,12 @@ const DuplicateLoginModal = ({
                   className="progress-bar bg-warning"
                   role="progressbar"
                   style={{ 
-                    width: `${(timeLeft / 10) * 100}%`,
+                    width: `${(timeLeft / 3) * 100}%`,
                     transition: 'width 1s linear'
                   }}
                   aria-valuenow={timeLeft}
                   aria-valuemin="0"
-                  aria-valuemax="10"
+                  aria-valuemax="3"
                 />
               </div>
             </div>

@@ -60,8 +60,8 @@ const AIMessage = ({
           {aiUser.name}
         </span>
       </div>
-      <div className="message-bubble message-ai last relative group">
-        <div className="message-content">
+      <div className="message-bubble message-ai last relative group" data-testid="message-ai">
+        <div className="message-content" data-testid="message-content">
           {renderContent()}
         </div>
         

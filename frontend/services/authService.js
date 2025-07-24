@@ -134,22 +134,22 @@ class AuthService {
       console.error('Login error:', error);
 
       if (error.response?.status === 401) {
-        Toast.error('이메일 주소가 없거나 비밀번호가 틀렸습니다.');
+        // Toast 제거 - 전역 모달에서 처리
         throw new Error('이메일 주소가 없거나 비밀번호가 틀렸습니다.');
       }
 
       if (error.response?.status === 429) {
-        Toast.error('너무 많은 로그인 시도가 있었습니다. 잠시 후 다시 시도해주세요.');
+        // Toast 제거 - 전역 모달에서 처리
         throw new Error('너무 많은 로그인 시도가 있었습니다.');
       }
 
       if (!error.response) {
-        Toast.error('서버와 통신할 수 없습니다. 잠시 후 다시 시도해주세요.');
+        // Toast 제거 - 전역 모달에서 처리
         throw new Error('서버와 통신할 수 없습니다.');
       }
 
       const errorMessage = error.response?.data?.message || '로그인 중 오류가 발생했습니다.';
-      Toast.error(errorMessage);
+      // Toast 제거 - 전역 모달에서 처리
       throw new Error(errorMessage);
     }
   }

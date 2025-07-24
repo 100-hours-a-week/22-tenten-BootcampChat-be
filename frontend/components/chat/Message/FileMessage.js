@@ -475,8 +475,8 @@ const FileMessage = ({
             {isMine ? '나' : msg.sender?.name}
           </span>
         </div>
-        <div className={`message-bubble ${isMine ? 'message-mine' : 'message-other'} last file-message`}>
-          <div className="message-content">
+        <div className={`message-bubble ${isMine ? 'message-mine' : 'message-other'} last file-message`} data-testid="file-message">
+          <div className="message-content file-message" data-testid="message-content">
             {error && (
               <Callout color="danger" className="mb-3 d-flex align-items-center">
                 <AlertCircle className="w-4 h-4 me-2" />

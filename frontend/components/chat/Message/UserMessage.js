@@ -51,7 +51,7 @@ const UserMessage = ({
           </span>
         </div>
         <div className={`message-bubble ${isMine ? 'message-mine' : 'message-other'} last relative group`}>
-          <div className="message-content">
+          <div className="message-content" data-testid="message-content">
             <MessageContent content={msg.content} />
           </div>
           <div className="message-footer">
