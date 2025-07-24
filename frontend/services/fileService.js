@@ -115,15 +115,12 @@ class FileService {
         return completionResponse;
       }
 
-      const fileData = completionResponse.file;
+      const fileData = completionResponse.data;
       return {
         success: true,
         data: {
-          ...completionResponse,
-          file: {
-            ...fileData,
-            url: this.getFileUrl(fileData.filename, true),
-          },
+          ...fileData,
+          url: this.getFileUrl(fileData.filename, true),
         },
       };
     } catch (error) {
@@ -158,231 +155,27 @@ class FileService {
     }
   }
 
-  // Legacy: 기존 multipart 업로드 방식 (호환성용)
-  async uploadFileViaMultipart(file, onProgress) {
-    try {
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        return {
-          success: false,
-          message: '인증 정보가 없습니다.',
-        };
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const source = CancelToken.source();
-      this.activeUploads.set(file.name, source);
-
-      const uploadUrl = this.baseUrl
-        ? `${this.baseUrl}/api/files/upload`
-        : '/api/files/upload';
-
-      const response = await axios.post(uploadUrl, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId,
-        },
-        cancelToken: source.token,
-        withCredentials: true,
-        onUploadProgress: (progressEvent) => {
-          if (onProgress) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            onProgress(percentCompleted);
-          }
-        },
-      });
-
-      this.activeUploads.delete(file.name);
-
-      if (!response.data || !response.data.success) {
-        return {
-          success: false,
-          message: response.data?.message || '파일 업로드에 실패했습니다.',
-        };
-      }
-
-      const fileData = response.data.file;
-      return {
-        success: true,
-        data: {
-          ...response.data,
-          file: {
-            ...fileData,
-            url: this.getFileUrl(fileData.filename, true),
-          },
-        },
-      };
-    } catch (error) {
-      this.activeUploads.delete(file.name);
-
-      if (isCancel(error)) {
-        return {
-          success: false,
-          message: '업로드가 취소되었습니다.',
-        };
-      }
-
-      if (error.response?.status === 401) {
-        try {
-          const refreshed = await authService.refreshToken();
-          if (refreshed) {
-            return this.uploadFileViaMultipart(file, onProgress);
-          }
-          return {
-            success: false,
-            message: '인증이 만료되었습니다. 다시 로그인해주세요.',
-          };
-        } catch (refreshError) {
-          return {
-            success: false,
-            message: '인증이 만료되었습니다. 다시 로그인해주세요.',
-          };
-        }
-      }
-
-      return this.handleUploadError(error);
-    }
-  }
+  // 멀티파트 업로드 함수 제거됨 - S3 전용 아키텍처
   async downloadFile(filename, originalname, file = null) {
     try {
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        return {
-          success: false,
-          message: '인증 정보가 없습니다.',
-        };
-      }
-
-      // S3 파일인 경우 presigned URL 사용
-      if (file && (file.uploadMethod === 's3_presigned' || file.s3Key)) {
-        const downloadResult = await this.getS3DownloadUrl(filename);
-        if (!downloadResult.success) {
-          return downloadResult;
-        }
-
-        // S3 presigned URL로 직접 다운로드
-        window.open(downloadResult.downloadUrl, '_blank');
+      // S3 전용 아키텍처: S3 URL 직접 사용
+      if (file && file.s3Url) {
+        // S3 URL로 직접 다운로드
+        window.open(file.s3Url, '_blank');
         return { success: true };
       }
 
-      // 로컬 파일 다운로드 로직
-      return this.downloadLocalFile(filename, originalname);
+      // S3 URL이 없으면 에러 반환
+      return {
+        success: false,
+        message: 'S3 URL이 없습니다. 로컬 파일은 더 이상 지원하지 않습니다.',
+      };
     } catch (error) {
       return this.handleDownloadError(error);
     }
   }
 
-  // 로컬 파일 다운로드 (레거시)
-  async downloadLocalFile(filename, originalname) {
-    try {
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        return {
-          success: false,
-          message: '인증 정보가 없습니다.',
-        };
-      }
-
-      // 파일 존재 여부 먼저 확인
-      const downloadUrl = this.getFileUrl(filename, false);
-      const checkResponse = await axios.head(downloadUrl, {
-        headers: {
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId,
-        },
-        validateStatus: (status) => status < 500,
-        withCredentials: true,
-      });
-
-      if (checkResponse.status === 404) {
-        return {
-          success: false,
-          message: '파일을 찾을 수 없습니다.',
-        };
-      }
-
-      if (checkResponse.status === 403) {
-        return {
-          success: false,
-          message: '파일에 접근할 권한이 없습니다.',
-        };
-      }
-
-      if (checkResponse.status !== 200) {
-        return {
-          success: false,
-          message: '파일 다운로드 준비 중 오류가 발생했습니다.',
-        };
-      }
-
-      const response = await axios({
-        method: 'GET',
-        url: downloadUrl,
-        headers: {
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId,
-        },
-        responseType: 'blob',
-        timeout: 30000,
-        withCredentials: true,
-      });
-
-      const contentType = response.headers['content-type'];
-      const contentDisposition = response.headers['content-disposition'];
-      let finalFilename = originalname;
-
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(
-          /filename\*=UTF-8''([^;]+)|filename="([^"]+)"|filename=([^;]+)/
-        );
-        if (filenameMatch) {
-          finalFilename = decodeURIComponent(
-            filenameMatch[1] || filenameMatch[2] || filenameMatch[3]
-          );
-        }
-      }
-
-      const blob = new Blob([response.data], {
-        type: contentType || 'application/octet-stream',
-      });
-
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = finalFilename;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(blobUrl);
-      }, 100);
-
-      return { success: true };
-    } catch (error) {
-      if (error.response?.status === 401) {
-        try {
-          const refreshed = await authService.refreshToken();
-          if (refreshed) {
-            return this.downloadLocalFile(filename, originalname);
-          }
-        } catch (refreshError) {
-          return {
-            success: false,
-            message: '인증이 만료되었습니다. 다시 로그인해주세요.',
-          };
-        }
-      }
-
-      return this.handleDownloadError(error);
-    }
-  }
+  // 로컬 파일 다운로드 함수 제거됨 - S3 전용 아키텍처
 
   getFileUrl(filename, forPreview = false) {
     if (!filename) return '';
@@ -395,57 +188,17 @@ class FileService {
   getPreviewUrl(file, withAuth = true) {
     if (!file?.filename) return '';
 
-    // S3 파일인 경우 S3 URL 사용
-    if (file.uploadMethod === 's3_presigned' || file.s3Key) {
-      return this.getS3PreviewUrl(file.filename);
+    // S3 전용 아키텍처: S3 URL 직접 사용
+    if (file.s3Url) {
+      return file.s3Url;
     }
 
-    // 로컬 파일
-    const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
-
-    if (!withAuth) return baseUrl;
-
-    const user = authService.getCurrentUser();
-    if (!user?.token || !user?.sessionId) return baseUrl;
-
-    // URL 객체 생성 전 프로토콜 확인
-    const url = new URL(baseUrl);
-    url.searchParams.append('token', encodeURIComponent(user.token));
-    url.searchParams.append('sessionId', encodeURIComponent(user.sessionId));
-
-    return url.toString();
+    // S3 URL이 없으면 에러 로그 출력 후 빈 문자열 반환
+    console.error('File without S3 URL - local files are no longer supported:', file);
+    return '';
   }
 
-  // S3 미리보기 URL 생성
-  async getS3PreviewUrl(filename) {
-    try {
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        return '';
-      }
-
-      const requestUrl = this.baseUrl
-        ? `${this.baseUrl}/api/files/s3-url/view/${filename}`
-        : `/api/files/s3-url/view/${filename}`;
-
-      const response = await axios.get(requestUrl, {
-        headers: {
-          'x-auth-token': user.token,
-          'x-session-id': user.sessionId,
-        },
-        withCredentials: true,
-      });
-
-      if (response.data.success) {
-        return response.data.viewUrl;
-      }
-
-      return '';
-    } catch (error) {
-      console.error('S3 preview URL generation error:', error);
-      return '';
-    }
-  }
+  // S3 미리보기 URL 생성 함수 제거됨 - 직접 S3 URL 사용
 
   // S3 다운로드 URL 생성
   async getS3DownloadUrl(filename) {

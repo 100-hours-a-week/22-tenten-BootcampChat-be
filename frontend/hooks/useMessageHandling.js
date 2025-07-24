@@ -124,11 +124,13 @@ export const useMessageHandling = (socketRef, currentUser, router, handleSession
          type: 'file',
          content: messageData.content || '',
          fileData: {
-           _id: uploadResponse.data.file._id,
-           filename: uploadResponse.data.file.filename,
-           originalname: uploadResponse.data.file.originalname,
-           mimetype: uploadResponse.data.file.mimetype,
-           size: uploadResponse.data.file.size
+           filename: uploadResponse.data.filename,
+           originalname: uploadResponse.data.originalname,
+           mimetype: uploadResponse.data.mimetype,
+           size: uploadResponse.data.size,
+           s3Url: uploadResponse.data.s3Url,
+           s3Key: uploadResponse.data.s3Key,
+           s3Bucket: uploadResponse.data.s3Bucket
          }
        });
 
