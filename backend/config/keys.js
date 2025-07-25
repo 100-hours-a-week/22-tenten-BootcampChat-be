@@ -12,6 +12,19 @@ module.exports = {
   passwordSalt: process.env.PASSWORD_SALT || DEFAULT_PASSWORD_SALT,
   redisHost: process.env.REDIS_HOST,
   redisPort: process.env.REDIS_PORT,
+  
+  // Redis Cluster Configuration
+  redisClusterEnabled: process.env.REDIS_CLUSTER_ENABLED === 'true',
+  redisMasterHost: process.env.REDIS_MASTER_HOST || process.env.REDIS_HOST,
+  redisMasterPort: process.env.REDIS_MASTER_PORT || process.env.REDIS_PORT,
+  redisSlaveHost: process.env.REDIS_SLAVE_HOST || process.env.REDIS_HOST,
+  redisSlavePort: process.env.REDIS_SLAVE_PORT || '16379',
+  
+  // Redis Connection Settings
+  redisConnectTimeout: process.env.REDIS_CONNECT_TIMEOUT || '5000',
+  redisMaxRetries: process.env.REDIS_MAX_RETRIES || '5',
+  redisRetryDelay: process.env.REDIS_RETRY_DELAY || '5000',
+  redisFailoverTimeout: process.env.REDIS_FAILOVER_TIMEOUT || '5000',
   openaiApiKey: process.env.OPENAI_API_KEY,
   vectorDbEndpoint: process.env.VECTOR_DB_ENDPOINT,
 };
