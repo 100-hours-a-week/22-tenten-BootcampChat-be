@@ -5,8 +5,16 @@ build/
 .npmrc
 .env.local
 .env
-.env.*
-backend/.env.*
+.env.development
+.env.production
+.env.test
+backend/.env
+backend/.env.development
+backend/.env.production
+backend/.env.test
+backend/.env.instance*
+!backend/.env.example
+!backend/.env.*.example
 backend/uploads
 
 # Next.js
