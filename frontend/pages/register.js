@@ -124,10 +124,7 @@ const Register = () => {
       setShowSuccessModal(true);
       fireConfetti();
       
-      // 10초 후 채팅방 목록 페이지로 이동
-      setTimeout(() => {
-        router.push('/chat-rooms');
-      }, 10000);
+      router.push('/chat-rooms'); // 즉시 리디렉션
 
     } catch (err) {
       console.error('Registration error:', err);
@@ -161,7 +158,7 @@ const Register = () => {
 
           {errors.length > 0 && (
             <Box mt="400">
-              <Callout color="danger">
+              <Callout color="danger" className="alert-danger">
                 <Flex align="center" gap="200">
                   <ErrorCircleIcon size={18} />
                   <Stack gap="100">
@@ -290,7 +287,7 @@ const Register = () => {
                 
                 <div className="modal-body text-center py-4">
                   <h4 className="text-success mb-3">회원가입을 축하합니다!</h4>
-                  <Text typography="body2" color="neutral-weak">10초 후 채팅방 목록으로 이동합니다.</Text>
+                  <Text typography="body2" color="neutral-weak">10초 후 채팅방으로 이동합니다.</Text>
                 </div>
                 
                 <div className="modal-footer">

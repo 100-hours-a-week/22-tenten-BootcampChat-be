@@ -129,7 +129,7 @@ const Profile = () => {
       }
 
       // 이름 변경 처리
-      if (formData.name !== currentUser.name) {
+      if (formData.name !== (currentUser?.name || '')) {
         const updatedUser = await authService.updateProfile({ name: formData.name });
         setCurrentUser(updatedUser);
       }
@@ -150,13 +150,14 @@ const Profile = () => {
 
     } catch (err) {
       console.error('Profile update error:', err);
-      setError(err.response?.data?.message || err.message || '프로필 업데이트 중 오류가 발생했습니다.');
+      const errorMessage = err.response?.data?.message || err.message || '프로필 업데이트 중 오류가 발생했습니다.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!currentUser) return null;
+
 
   return (
     <div className="auth-container">
@@ -176,7 +177,7 @@ const Profile = () => {
 
           {error && (
             <Box mt="400">
-              <Callout color="danger">
+              <Callout color="danger" className="alert">
                 <Flex align="center" gap="200">
                   <ErrorCircleIcon size={16} />
                   <Text>{error}</Text>
@@ -187,7 +188,7 @@ const Profile = () => {
 
           {success && (
             <Box mt="400">
-              <Callout color="success">
+              <Callout color="success" className="alert">
                 <Text>{success}</Text>
               </Callout>
             </Box>
@@ -199,7 +200,7 @@ const Profile = () => {
                 <Box>
                   <TextInput.Root
                     type="email"
-                    value={currentUser.email}
+                    value={currentUser?.email || ''}
                     disabled
                   >
                     <TextInput.Label>이메일</TextInput.Label>
@@ -213,21 +214,18 @@ const Profile = () => {
                 </Box>
                 
                 <Box>
-                  <TextInput.Root
+                  <label htmlFor="name">이름</label>
+                  <input
                     type="text"
+                    id="name"
+                    name="name"
                     value={formData.name}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, name: value }))}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="이름을 입력하세요"
+                    required
                     disabled={loading}
-                  >
-                    <TextInput.Label>이름</TextInput.Label>
-                    <TextInput.Field
-                      id="name"
-                      name="name"
-                      placeholder="이름을 입력하세요"
-                      required
-                      style={{ width: '100%' }}
-                    />
-                  </TextInput.Root>
+                    style={{ width: '100%', padding: '8px', border: '1px solid #ccc', borderRadius: '4px', color: 'black' }}
+                  />
                 </Box>
                 
                 <Box>

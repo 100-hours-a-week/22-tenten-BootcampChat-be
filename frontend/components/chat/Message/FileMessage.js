@@ -3,12 +3,13 @@ import {
   PdfIcon as FileText, 
   ImageIcon as Image, 
   MovieIcon as Film, 
-  CorrectOutlineIcon as CheckCheck, 
-  CorrectOutlineIcon as Check, 
-  MusicIcon as Music, 
-  ExternalLinkIcon as ExternalLink, 
+  SoundOnIcon as Music, 
+  OpenInNewOutlineIcon as ExternalLink, 
   DownloadIcon as Download,
-  ErrorCircleIcon as AlertCircle 
+  ErrorCircleIcon as AlertCircle,
+  FolderZipIcon as Archive,
+  DocumentIcon as Document,
+  CodeIcon as Code
 } from '@vapor-ui/icons';
 import { Button, Text, Callout } from '@vapor-ui/core';
 import PersistentAvatar from '../../common/PersistentAvatar';
@@ -33,12 +34,19 @@ const FileMessage = ({
 
   useEffect(() => {
     if (msg?.file) {
-      const url = fileService.getPreviewUrl(msg.file, true);
+      // S3 전용 아키텍처: S3 URL 직접 사용
+      const url = msg.file.s3Url || '';
       setPreviewUrl(url);
       console.debug('Preview URL generated:', {
         filename: msg.file.filename,
+        s3Url: msg.file.s3Url,
         url
       });
+      
+      if (!msg.file.s3Url) {
+        console.error('File without S3 URL - local files are no longer supported:', msg.file);
+        setError('파일 URL이 없습니다. S3 업로드를 사용해주세요.');
+      }
     }
   }, [msg?.file]);
 
@@ -59,11 +67,40 @@ const FileMessage = ({
 
   const getFileIcon = () => {
     const mimetype = msg.file?.mimetype || '';
+    const category = msg.file?.category;
     const iconProps = { className: "w-5 h-5 flex-shrink-0" };
 
+    // Use category if available, otherwise fall back to mimetype
+    if (category) {
+      switch (category) {
+        case 'image':
+          return <Image {...iconProps} color="#00C853" />;
+        case 'video':
+          return <Film {...iconProps} color="#2196F3" />;
+        case 'audio':
+          return <Music {...iconProps} color="#9C27B0" />;
+        case 'document':
+          if (mimetype === 'application/pdf') {
+            return <FileText {...iconProps} color="#F44336" />;
+          }
+          return <Document {...iconProps} color="#FF9800" />;
+        case 'archive':
+          return <Archive {...iconProps} color="#795548" />;
+        default:
+          return <FileText {...iconProps} color="#ffffff" />;
+      }
+    }
+
+    // Fallback to mimetype-based detection for legacy files
     if (mimetype.startsWith('image/')) return <Image {...iconProps} color="#00C853" />;
     if (mimetype.startsWith('video/')) return <Film {...iconProps} color="#2196F3" />;
     if (mimetype.startsWith('audio/')) return <Music {...iconProps} color="#9C27B0" />;
+    if (mimetype === 'application/pdf') return <FileText {...iconProps} color="#F44336" />;
+    if (mimetype.startsWith('application/') && mimetype.includes('zip')) {
+      return <Archive {...iconProps} color="#795548" />;
+    }
+    if (mimetype.startsWith('text/')) return <Code {...iconProps} color="#4CAF50" />;
+    
     return <FileText {...iconProps} color="#ffffff" />;
   };
 
@@ -104,21 +141,15 @@ const FileMessage = ({
     setError(null);
     
     try {
-      if (!msg.file?.filename) {
-        throw new Error('파일 정보가 없습니다.');
+      if (!msg.file?.s3Url) {
+        throw new Error('파일 URL이 없습니다.');
       }
 
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
-      }
-
-      const baseUrl = fileService.getFileUrl(msg.file.filename, false);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user.token)}&sessionId=${encodeURIComponent(user.sessionId)}&download=true`;
-
+      // S3 전용 아키텍처: S3 URL 직접 사용
       const link = document.createElement('a');
-      link.href = authenticatedUrl;
+      link.href = msg.file.s3Url;
       link.download = getDecodedFilename(msg.file.originalname);
+      link.target = '_blank';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -135,19 +166,12 @@ const FileMessage = ({
     setError(null);
 
     try {
-      if (!msg.file?.filename) {
-        throw new Error('파일 정보가 없습니다.');
+      if (!msg.file?.s3Url) {
+        throw new Error('파일 URL이 없습니다.');
       }
 
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
-      }
-
-      const baseUrl = fileService.getFileUrl(msg.file.filename, true);
-      const authenticatedUrl = `${baseUrl}?token=${encodeURIComponent(user.token)}&sessionId=${encodeURIComponent(user.sessionId)}`;
-
-      const newWindow = window.open(authenticatedUrl, '_blank');
+      // S3 전용 아키텍처: S3 URL 직접 사용
+      const newWindow = window.open(msg.file.s3Url, '_blank');
       if (!newWindow) {
         throw new Error('팝업이 차단되었습니다. 팝업 차단을 해제해주세요.');
       }
@@ -160,25 +184,20 @@ const FileMessage = ({
 
   const renderImagePreview = (originalname) => {
     try {
-      if (!msg?.file?.filename) {
+      if (!msg?.file?.s3Url) {
+        console.error('S3 URL missing for image file:', msg?.file);
         return (
           <div className="flex items-center justify-center h-full bg-gray-100">
             <Image className="w-8 h-8 text-gray-400" />
+            <span className="ml-2 text-sm text-gray-500">이미지 URL 없음</span>
           </div>
         );
       }
 
-      const user = authService.getCurrentUser();
-      if (!user?.token || !user?.sessionId) {
-        throw new Error('인증 정보가 없습니다.');
-      }
-
-      const previewUrl = fileService.getPreviewUrl(msg.file, true);
-
       return (
         <div className="bg-transparent-pattern">
           <img 
-            src={previewUrl}
+            src={msg.file.s3Url}
             alt={originalname}
             className="object-cover rounded-sm"
             onLoad={() => {
@@ -187,7 +206,9 @@ const FileMessage = ({
             onError={(e) => {
               console.error('Image load error:', {
                 error: e.error,
-                originalname
+                originalname,
+                src: e.target.src,
+                s3Url: msg.file.s3Url
               });
               e.target.onerror = null; 
               e.target.src = '/images/placeholder-image.png';
@@ -210,8 +231,39 @@ const FileMessage = ({
 
   const renderFilePreview = () => {
     const mimetype = msg.file?.mimetype || '';
+    const category = msg.file?.category || 'other';
     const originalname = getDecodedFilename(msg.file?.originalname || 'Unknown File');
     const size = fileService.formatFileSize(msg.file?.size || 0);
+    const metadata = msg.file?.metadata || {};
+    
+    // Format additional metadata info
+    const getMetadataInfo = () => {
+      const info = [];
+      
+      if (metadata.dimensions?.width && metadata.dimensions?.height) {
+        info.push(`${metadata.dimensions.width}×${metadata.dimensions.height}`);
+      }
+      
+      if (metadata.duration) {
+        const hours = Math.floor(metadata.duration / 3600);
+        const minutes = Math.floor((metadata.duration % 3600) / 60);
+        const seconds = Math.floor(metadata.duration % 60);
+        
+        if (hours > 0) {
+          info.push(`${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
+        } else {
+          info.push(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+        }
+      }
+      
+      if (metadata.pageCount) {
+        info.push(`${metadata.pageCount} 페이지`);
+      }
+      
+      return info.join(' • ');
+    };
+    
+    const metadataInfo = getMetadataInfo();
     
     const FileActions = () => (
       <div className="file-actions mt-2 pt-2 border-t border-gray-200">
@@ -248,7 +300,10 @@ const FileMessage = ({
           <div className={fileInfoClass}>
             <div className="flex-1 min-w-0">
               <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
-              <span className="text-sm text-muted">{size}</span>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
             </div>
           </div>
           <FileActions />
@@ -260,28 +315,31 @@ const FileMessage = ({
       return (
         <div className={previewWrapperClass}>
           <div>
-            {previewUrl ? (
+            {msg.file.s3Url ? (
               <video 
                 className="object-cover rounded-sm"
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 비디오`}
-                crossOrigin="use-credentials"
               >
-                <source src={previewUrl} type={mimetype} />
+                <source src={msg.file.s3Url} type={mimetype} />
                 <track kind="captions" />
                 비디오를 재생할 수 없습니다.
               </video>
             ) : (
               <div className="flex items-center justify-center h-full">
                 <Film className="w-8 h-8 text-gray-400" />
+                <span className="ml-2 text-sm text-gray-500">비디오 URL 없음</span>
               </div>
             )}
           </div>
           <div className={fileInfoClass}>
             <div className="flex-1 min-w-0">
               <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
-              <span className="text-sm text-muted">{size}</span>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
             </div>
           </div>
           <FileActions />
@@ -295,21 +353,27 @@ const FileMessage = ({
           <div className={fileInfoClass}>
             <div className="flex-1 min-w-0">
               <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
-              <span className="text-sm text-muted">{size}</span>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
             </div>
           </div>
           <div className="px-3 pb-3">
-            {previewUrl && (
+            {msg.file.s3Url ? (
               <audio 
                 className="w-full"
                 controls
                 preload="metadata"
                 aria-label={`${originalname} 오디오`}
-                crossOrigin="use-credentials"
               >
-                <source src={previewUrl} type={mimetype} />
+                <source src={msg.file.s3Url} type={mimetype} />
                 오디오를 재생할 수 없습니다.
               </audio>
+            ) : (
+              <div className="text-center text-gray-500">
+                오디오 URL이 없습니다.
+              </div>
             )}
           </div>
           <FileActions />
@@ -317,12 +381,84 @@ const FileMessage = ({
       );
     }
 
+    // Handle PDF files specially
+    if (mimetype === 'application/pdf') {
+      return (
+        <div className={previewWrapperClass}>
+          <div className={fileInfoClass}>
+            <div className="flex-1 min-w-0">
+              <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded text-center">
+            <FileText className="w-12 h-12 mx-auto mb-2 text-red-600" />
+            <Text typography="body2" className="text-gray-600">PDF 문서</Text>
+          </div>
+          <FileActions />
+        </div>
+      );
+    }
+
+    // Handle archive files
+    if (category === 'archive' || mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('7z')) {
+      return (
+        <div className={previewWrapperClass}>
+          <div className={fileInfoClass}>
+            <div className="flex-1 min-w-0">
+              <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded text-center">
+            <Archive className="w-12 h-12 mx-auto mb-2 text-brown-600" />
+            <Text typography="body2" className="text-gray-600">압축 파일</Text>
+          </div>
+          <FileActions />
+        </div>
+      );
+    }
+
+    // Handle text files and documents
+    if (mimetype.startsWith('text/') || (category === 'document' && mimetype !== 'application/pdf')) {
+      return (
+        <div className={previewWrapperClass}>
+          <div className={fileInfoClass}>
+            <div className="flex-1 min-w-0">
+              <Text typography="body2" className="font-medium truncate">{getFileIcon()} {originalname}</Text>
+              <div className="text-sm text-muted">
+                <span>{size}</span>
+                {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded text-center">
+            <Document className="w-12 h-12 mx-auto mb-2 text-orange-600" />
+            <Text typography="body2" className="text-gray-600">
+              {category === 'document' ? '문서 파일' : '텍스트 파일'}
+            </Text>
+          </div>
+          <FileActions />
+        </div>
+      );
+    }
+
+    // Default fallback for other file types
     return (
       <div className={previewWrapperClass}>
         <div className={fileInfoClass}>
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate">{getFileIcon()} {originalname}</div>
-            <Text typography="body2" as="span">{size}</Text>
+            <div className="text-sm text-muted">
+              <span>{size}</span>
+              {metadataInfo && <span className="ml-2">{metadataInfo}</span>}
+            </div>
           </div>
         </div>
         <FileActions />
@@ -339,8 +475,8 @@ const FileMessage = ({
             {isMine ? '나' : msg.sender?.name}
           </span>
         </div>
-        <div className={`message-bubble ${isMine ? 'message-mine' : 'message-other'} last file-message`}>
-          <div className="message-content">
+        <div className={`message-bubble ${isMine ? 'message-mine' : 'message-other'} last file-message`} data-testid="file-message">
+          <div className="message-content file-message" data-testid="message-content">
             {error && (
               <Callout color="danger" className="mb-3 d-flex align-items-center">
                 <AlertCircle className="w-4 h-4 me-2" />

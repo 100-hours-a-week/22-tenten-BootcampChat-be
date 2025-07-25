@@ -87,10 +87,10 @@ class SocketService {
           ...options,
           transports: ['websocket', 'polling'],
           reconnection: true,
-          reconnectionAttempts: this.maxReconnectAttempts,
+          reconnectionAttempts: 10, // 재연결 시도 횟수 증가 (예: 5 -> 10)
           reconnectionDelay: this.retryDelay,
-          reconnectionDelayMax: 5000,
-          timeout: 20000,
+          reconnectionDelayMax: 10000, // 재연결 지연 최대값 증가 (예: 5초 -> 10초)
+          timeout: 30000, // 초기 연결 타임아웃 증가 (예: 20초 -> 30초)
           forceNew: true
         });
 

@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Redis Master (쓰기 전용)
+  redis-master:
+    image: redis/redis-stack:latest
+    container_name: redis-master
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+      - "8001:8001"  # RedisInsight
+    volumes:
+      - redis-master-data:/data
+      - ./redis-config/redis-master.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_ARGS="--appendonly yes --appendfsync everysec"
+    networks:
+      - redis-cluster
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # Redis Slave (읽기 전용)
+  redis-slave:
+    image: redis/redis-stack:latest
+    container_name: redis-slave
+    restart: unless-stopped
+    ports:
+      - "16379:6379"
+      - "8002:8001"  # RedisInsight
+    volumes:
+      - redis-slave-data:/data
+      - ./redis-config/redis-slave.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    environment:
+      - REDIS_ARGS="--appendonly yes --appendfsync everysec"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    networks:
+      - redis-cluster
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # Redis Sentinel (고가용성을 위한 모니터링)
+  redis-sentinel:
+    image: redis:7-alpine
+    container_name: redis-sentinel
+    restart: unless-stopped
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./redis-config/sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-slave
+    networks:
+      - redis-cluster
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-master-data:
+    driver: local
+  redis-slave-data:
+    driver: local
+
+networks:
+  redis-cluster:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

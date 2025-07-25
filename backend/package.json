@@ -5,9 +5,14 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "migrate:s3": "node scripts/migrateLocalFilesToS3.js",
+    "verify:migration": "node scripts/verifyMigration.js",
+    "redis:setup": "node scripts/setupRedisIndex.js",
+    "redis:status": "curl -s http://localhost:5000/api/redis-status | jq ."
   },
   "dependencies": {
+    "aws-sdk": "^2.1692.0",
     "axios": "^1.4.0",
     "bcryptjs": "^2.4.3",
     "bull": "^4.10.4",
@@ -24,7 +29,7 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "pdf-parse": "^1.1.1",
-    "redis": "^4.6.7",
+    "redis": "4.7.0",
     "socket.io": "^4.7.2"
   },
   "devDependencies": {

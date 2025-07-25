@@ -1,4 +1,8 @@
 import { PlaywrightTestConfig, devices } from '@playwright/test';
+import * as dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 const config: PlaywrightTestConfig = {
   testDir: './test',

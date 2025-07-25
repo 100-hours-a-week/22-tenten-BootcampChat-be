@@ -169,63 +169,65 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// 프로필 이미지 업로드
+// 프로필 이미지 업로드 완료 처리 (S3 기반)
 exports.uploadProfileImage = async (req, res) => {
   try {
-    if (!req.file) {
+    const { s3Key, filename, originalname, mimetype, size, s3Url } = req.body;
+
+    // 필수 데이터 검증
+    if (!s3Key || !filename || !originalname || !mimetype || !size || !s3Url) {
       return res.status(400).json({
         success: false,
-        message: '이미지가 제공되지 않았습니다.'
+        message: '프로필 이미지 업로드 정보가 누락되었습니다.'
       });
     }
 
-    // 파일 유효성 검사
-    const fileSize = req.file.size;
-    const fileType = req.file.mimetype;
-    const maxSize = 5 * 1024 * 1024; // 5MB
-
-    if (fileSize > maxSize) {
-      // 업로드된 파일 삭제
-      await fs.unlink(req.file.path);
-      return res.status(400).json({
-        success: false,
-        message: '파일 크기는 5MB를 초과할 수 없습니다.'
-      });
-    }
-
-    if (!fileType.startsWith('image/')) {
-      // 업로드된 파일 삭제
-      await fs.unlink(req.file.path);
+    // 이미지 파일 타입 검증
+    if (!mimetype.startsWith('image/')) {
       return res.status(400).json({
         success: false,
         message: '이미지 파일만 업로드할 수 있습니다.'
       });
     }
 
+    // 파일 크기 제한 (5MB)
+    const maxSize = 5 * 1024 * 1024;
+    if (size > maxSize) {
+      return res.status(400).json({
+        success: false,
+        message: '파일 크기는 5MB를 초과할 수 없습니다.'
+      });
+    }
+
     const user = await User.findById(req.user.id);
     if (!user) {
-      // 업로드된 파일 삭제
-      await fs.unlink(req.file.path);
       return res.status(404).json({
         success: false,
         message: '사용자를 찾을 수 없습니다.'
       });
     }
 
-    // 기존 프로필 이미지가 있다면 삭제
+    // 기존 프로필 이미지 처리 (로컬/S3 구분)
     if (user.profileImage) {
-      const oldImagePath = path.join(__dirname, '..', user.profileImage);
       try {
-        await fs.access(oldImagePath);
-        await fs.unlink(oldImagePath);
+        if (user.profileImage.startsWith('http')) {
+          // S3 이미지인 경우 - 향후 S3에서 삭제 로직 추가 가능
+          console.log('Previous S3 profile image will be replaced:', user.profileImage);
+        } else {
+          // 로컬 이미지인 경우 - 로컬 파일 삭제
+          const oldImagePath = path.join(__dirname, '..', user.profileImage);
+          await fs.access(oldImagePath);
+          await fs.unlink(oldImagePath);
+          console.log('Previous local profile image deleted:', oldImagePath);
+        }
       } catch (error) {
-        console.error('Old profile image delete error:', error);
+        console.error('Previous profile image cleanup error:', error);
+        // 에러가 발생해도 계속 진행 (기존 이미지가 없을 수 있음)
       }
     }
 
-    // 새 이미지 경로 저장
-    const imageUrl = `/uploads/${req.file.filename}`;
-    user.profileImage = imageUrl;
+    // S3 URL을 User 모델에 저장
+    user.profileImage = s3Url;
     await user.save();
 
     res.json({
@@ -235,18 +237,10 @@ exports.uploadProfileImage = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Profile image upload error:', error);
-    // 업로드 실패 시 파일 삭제
-    if (req.file) {
-      try {
-        await fs.unlink(req.file.path);
-      } catch (unlinkError) {
-        console.error('File delete error:', unlinkError);
-      }
-    }
+    console.error('Profile image upload completion error:', error);
     res.status(500).json({
       success: false,
-      message: '이미지 업로드 중 오류가 발생했습니다.'
+      message: '프로필 이미지 업로드 완료 처리 중 오류가 발생했습니다.'
     });
   }
 };

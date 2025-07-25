@@ -5,6 +5,16 @@ build/
 .npmrc
 .env.local
 .env
+.env.development
+.env.production
+.env.test
+backend/.env
+backend/.env.development
+backend/.env.production
+backend/.env.test
+backend/.env.instance*
+!backend/.env.example
+!backend/.env.*.example
 backend/uploads
 
 # Next.js
@@ -26,3 +36,12 @@ Thumbs.db
 
 # VSCode settings
 .vscode/
+
+### AI
+CLAUDE.md
+.claude/
+GEMINI.md
+.gemini/
+.mcp.json
+/e2e/playwright-report/
+/e2e/combined-report/
