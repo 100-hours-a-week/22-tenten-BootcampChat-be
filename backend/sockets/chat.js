@@ -6,6 +6,8 @@ const { jwtSecret } = require('../config/keys');
 const redisClient = require('../utils/redisClient');
 const SessionService = require('../services/sessionService');
 const aiService = require('../services/aiService');
+const messageCacheService = require('../services/messageCacheService');
+const roomCacheService = require('../services/roomCacheService');
 
 module.exports = function(io) {
   const connectedUsers = new Map();
@@ -28,7 +30,7 @@ module.exports = function(io) {
     });
   };
 
-  // 메시지 일괄 로드 함수 개선
+  // 메시지 로드 함수 - 캐시 우선 전략
   const loadMessages = async (socket, roomId, before, limit = BATCH_SIZE) => {
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => {
@@ -37,54 +39,31 @@ module.exports = function(io) {
     });
 
     try {
-      // 쿼리 구성
-      const query = { room: roomId };
-      if (before) {
-        query.timestamp = { $lt: new Date(before) };
-      }
-
-      // 메시지 로드 with profileImage
-      const messages = await Promise.race([
-        Message.find(query)
-          .populate('sender', 'name email profileImage')
-          .sort({ timestamp: -1 })
-          .limit(limit + 1)
-          .lean(),
+      // messageCacheService를 통해 메시지 조회 (Redis 우선, MongoDB fallback)
+      const result = await Promise.race([
+        messageCacheService.getMessagesByRoom(roomId, before, limit),
         timeoutPromise
       ]);
 
-      // 결과 처리
-      const hasMore = messages.length > limit;
-      const resultMessages = messages.slice(0, limit);
-      const sortedMessages = resultMessages.sort((a, b) => 
-        new Date(a.timestamp) - new Date(b.timestamp)
-      );
-
-      // 읽음 상태 비동기 업데이트
-      if (sortedMessages.length > 0 && socket.user) {
-        const messageIds = sortedMessages.map(msg => msg._id);
-        Message.updateMany(
-          {
-            _id: { $in: messageIds },
-            'readers.userId': { $ne: socket.user.id }
-          },
-          {
-            $push: {
-              readers: {
-                userId: socket.user.id,
-                readAt: new Date()
-              }
-            }
-          }
-        ).exec().catch(error => {
-          console.error('Read status update error:', error);
+      // 읽음 상태 비동기 업데이트 (캐시 기반)
+      if (result.messages.length > 0 && socket.user) {
+        const messageIds = result.messages.map(msg => msg._id.toString());
+        messageCacheService.markAsRead(messageIds, socket.user.id).catch(error => {
+          console.error('Cache-based read status update error:', error);
         });
       }
 
+      logDebug('messages loaded via cache', {
+        roomId,
+        messageCount: result.messages.length,
+        hasMore: result.hasMore,
+        source: result.source
+      });
+
       return {
-        messages: sortedMessages,
-        hasMore,
-        oldestTimestamp: sortedMessages[0]?.timestamp || null
+        messages: result.messages,
+        hasMore: result.hasMore,
+        oldestTimestamp: result.oldestTimestamp
       };
     } catch (error) {
       if (error.message === 'Message loading timed out') {
@@ -94,7 +73,7 @@ module.exports = function(io) {
           limit
         });
       } else {
-        console.error('Load messages error:', {
+        console.error('Cache-based load messages error:', {
           error: error.message,
           stack: error.stack,
           roomId,
@@ -389,6 +368,11 @@ module.exports = function(io) {
         
         await joinMessage.save();
 
+        // Cache Warming: 활성 방에 대한 메시지 캐시 준비
+        messageCacheService.warmCacheForRoom(roomId, 30).catch(error => {
+          console.error('Cache warming error:', error);
+        });
+
         // 초기 메시지 로드
         const messageLoadResult = await loadMessages(socket, roomId);
         const { messages, hasMore, oldestTimestamp } = messageLoadResult;
@@ -482,7 +466,9 @@ module.exports = function(io) {
           hasAIMentions: aiMentions.length
         });
 
-        // 메시지 타입별 처리
+        // 캐시 서비스를 통한 메시지 생성
+        let messagePayload;
+        
         switch (type) {
           case 'file':
             if (!fileData) {
@@ -497,9 +483,14 @@ module.exports = function(io) {
               }
             }
 
-            message = new Message({
+            messagePayload = {
               room,
-              sender: socket.user.id,
+              sender: {
+                _id: socket.user.id,
+                name: socket.user.name,
+                email: socket.user.email,
+                profileImage: socket.user.profileImage
+              },
               type: 'file',
               file: {
                 filename: fileData.filename,
@@ -512,14 +503,12 @@ module.exports = function(io) {
                 uploadedAt: new Date()
               },
               content: content || '',
-              timestamp: new Date(),
-              reactions: {},
               metadata: {
                 fileType: fileData.mimetype,
                 fileSize: fileData.size,
                 originalName: fileData.originalname
               }
-            });
+            };
             break;
 
           case 'text':
@@ -528,24 +517,25 @@ module.exports = function(io) {
               return;
             }
 
-            message = new Message({
+            messagePayload = {
               room,
-              sender: socket.user.id,
+              sender: {
+                _id: socket.user.id,
+                name: socket.user.name,
+                email: socket.user.email,
+                profileImage: socket.user.profileImage
+              },
               content: messageContent,
-              type: 'text',
-              timestamp: new Date(),
-              reactions: {}
-            });
+              type: 'text'
+            };
             break;
 
           default:
             throw new Error('지원하지 않는 메시지 타입입니다.');
         }
 
-        await message.save();
-        await message.populate([
-          { path: 'sender', select: 'name email profileImage' }
-        ]);
+        // messageCacheService를 통해 메시지 생성 (Redis 우선 → MongoDB 비동기 동기화)
+        message = await messageCacheService.createMessage(messagePayload);
 
         io.to(room).emit('message', message);
 
@@ -746,7 +736,7 @@ module.exports = function(io) {
       }
     });
 
-    // 메시지 읽음 상태 처리
+    // 메시지 읽음 상태 처리 - 캐시 기반
     socket.on('markMessagesAsRead', async ({ roomId, messageIds }) => {
       try {
         if (!socket.user) {
@@ -757,63 +747,73 @@ module.exports = function(io) {
           return;
         }
 
-        // 읽음 상태 업데이트
-        await Message.updateMany(
-          {
-            _id: { $in: messageIds },
-            room: roomId,
-            'readers.userId': { $ne: socket.user.id }
-          },
-          {
-            $push: {
-              readers: {
-                userId: socket.user.id,
-                readAt: new Date()
-              }
-            }
-          }
-        );
+        // messageCacheService를 통해 읽음 상태 업데이트 (Redis 우선 → MongoDB 비동기 동기화)
+        const updatedMessageIds = await messageCacheService.markAsRead(messageIds, socket.user.id);
 
-        socket.to(roomId).emit('messagesRead', {
-          userId: socket.user.id,
-          messageIds
-        });
+        if (updatedMessageIds.length > 0) {
+          socket.to(roomId).emit('messagesRead', {
+            userId: socket.user.id,
+            messageIds: updatedMessageIds
+          });
+
+          logDebug('messages marked as read via cache', {
+            roomId,
+            userId: socket.user.id,
+            updatedCount: updatedMessageIds.length,
+            totalRequested: messageIds.length
+          });
+        }
 
       } catch (error) {
-        console.error('Mark messages as read error:', error);
+        console.error('Cache-based mark messages as read error:', error);
         socket.emit('error', {
           message: '읽음 상태 업데이트 중 오류가 발생했습니다.'
         });
       }
     });
 
-    // 리액션 처리
+    // 리액션 처리 - 캐시 기반
     socket.on('messageReaction', async ({ messageId, reaction, type }) => {
       try {
         if (!socket.user) {
           throw new Error('Unauthorized');
         }
 
-        const message = await Message.findById(messageId);
-        if (!message) {
-          throw new Error('메시지를 찾을 수 없습니다.');
-        }
+        let updatedReactions;
 
-        // 리액션 추가/제거
+        // messageCacheService를 통해 리액션 추가/제거 (Redis 우선 → MongoDB 비동기 동기화)
         if (type === 'add') {
-          await message.addReaction(reaction, socket.user.id);
+          updatedReactions = await messageCacheService.addReaction(messageId, reaction, socket.user.id);
         } else if (type === 'remove') {
-          await message.removeReaction(reaction, socket.user.id);
+          updatedReactions = await messageCacheService.removeReaction(messageId, reaction, socket.user.id);
+        } else {
+          throw new Error('지원하지 않는 리액션 타입입니다.');
         }
 
-        // 업데이트된 리액션 정보 브로드캐스트
-        io.to(message.room).emit('messageReactionUpdate', {
-          messageId,
-          reactions: message.reactions
-        });
+        // 메시지가 속한 방 정보 조회 (Redis에서)
+        const cacheKey = messageCacheService.getCacheKey(messageId);
+        const messageData = await redisClient.jsonGet(cacheKey);
+        
+        if (messageData && messageData.length > 0) {
+          const roomId = messageData[0].room;
+          
+          // 업데이트된 리액션 정보 브로드캐스트
+          io.to(roomId).emit('messageReactionUpdate', {
+            messageId,
+            reactions: messageData[0].reactions
+          });
+
+          logDebug('reaction updated via cache', {
+            messageId,
+            reaction,
+            type,
+            userId: socket.user.id,
+            roomId
+          });
+        }
 
       } catch (error) {
-        console.error('Message reaction error:', error);
+        console.error('Cache-based message reaction error:', error);
         socket.emit('error', {
           message: error.message || '리액션 처리 중 오류가 발생했습니다.'
         });

@@ -1,6 +1,18 @@
 // backend/utils/redisClient.js
-const Redis = require('redis');
-const { redisHost, redisPort } = require('../config/keys');
+const RedisClusterClient = require('./redisClusterClient');
+const { 
+  redisHost, 
+  redisPort,
+  redisClusterEnabled,
+  redisMasterHost,
+  redisMasterPort,
+  redisSlaveHost,
+  redisSlavePort,
+  redisConnectTimeout,
+  redisMaxRetries,
+  redisRetryDelay,
+  redisFailoverTimeout
+} = require('../config/keys');
 
 class MockRedisClient {
   constructor() {
@@ -60,100 +72,51 @@ class MockRedisClient {
 
 class RedisClient {
   constructor() {
-    this.client = null;
+    // RedisClusterClient 설정
+    const clusterConfig = {
+      clusterEnabled: redisClusterEnabled,
+      masterHost: redisMasterHost,
+      masterPort: parseInt(redisMasterPort) || 6379,
+      slaveHost: redisSlaveHost,
+      slavePort: parseInt(redisSlavePort) || 16379,
+      connectTimeout: parseInt(redisConnectTimeout) || 5000,
+      maxRetries: parseInt(redisMaxRetries) || 5,
+      retryDelay: parseInt(redisRetryDelay) || 5000,
+      failoverTimeout: parseInt(redisFailoverTimeout) || 5000
+    };
+
+    this.clusterClient = new RedisClusterClient(clusterConfig);
     this.isConnected = false;
-    this.connectionAttempts = 0;
-    this.maxRetries = 5;
-    this.retryDelay = 5000;
-    this.useMock = false;
+
+    console.log('RedisClient initialized with cluster support:', {
+      clusterEnabled: clusterConfig.clusterEnabled,
+      master: `${clusterConfig.masterHost}:${clusterConfig.masterPort}`,
+      slave: `${clusterConfig.slaveHost}:${clusterConfig.slavePort}`
+    });
   }
 
   async connect() {
-    if (this.isConnected && this.client) {
-      return this.client;
-    }
-
-    // Check if Redis configuration is available
-    if (!redisHost || !redisPort) {
-      console.log('Redis configuration not found, using in-memory mock');
-      this.client = new MockRedisClient();
-      this.isConnected = true;
-      this.useMock = true;
-      return this.client;
+    if (this.isConnected) {
+      return this.clusterClient;
     }
 
     try {
-      console.log('Connecting to Redis...');
-
-      this.client = Redis.createClient({
-        url: `redis://${redisHost}:${redisPort}`,
-        socket: {
-          host: redisHost,
-          port: redisPort,
-          connectTimeout: 5000,
-          reconnectStrategy: (retries) => {
-            if (retries > this.maxRetries) {
-              console.log('Max Redis reconnection attempts reached, switching to in-memory mock');
-              this.client = new MockRedisClient();
-              this.isConnected = true;
-              this.useMock = true;
-              return false;
-            }
-            return Math.min(retries * 50, 2000);
-          }
-        }
-      });
-
-      this.client.on('connect', () => {
-        console.log('Redis Client Connected');
-        this.isConnected = true;
-        this.connectionAttempts = 0;
-      });
-
-      this.client.on('error', (err) => {
-        console.error('Redis Client Error:', err.message);
-        if (!this.useMock) {
-          console.log('Switching to in-memory mock Redis');
-          this.client = new MockRedisClient();
-          this.isConnected = true;
-          this.useMock = true;
-        }
-      });
-
-      await this.client.connect();
-      return this.client;
-
-    } catch (error) {
-      console.error('Redis connection failed:', error.message);
-      console.log('Using in-memory mock Redis instead');
-      this.client = new MockRedisClient();
+      await this.clusterClient.connect();
       this.isConnected = true;
-      this.useMock = true;
-      return this.client;
+      return this.clusterClient;
+    } catch (error) {
+      console.error('Redis cluster connection failed:', error);
+      throw error;
     }
   }
 
+  // 기존 API 호환성을 위한 래퍼 메서드들
   async set(key, value, options = {}) {
     try {
       if (!this.isConnected) {
         await this.connect();
       }
-
-      if (this.useMock) {
-        return await this.client.set(key, value, options);
-      }
-
-      let stringValue;
-      if (typeof value === 'object') {
-        stringValue = JSON.stringify(value);
-      } else {
-        stringValue = String(value);
-      }
-
-      if (options.ttl) {
-        return await this.client.setEx(key, options.ttl, stringValue);
-      }
-      return await this.client.set(key, stringValue);
+      return await this.clusterClient.set(key, value, options);
     } catch (error) {
       console.error('Redis set error:', error);
       throw error;
@@ -165,19 +128,7 @@ class RedisClient {
       if (!this.isConnected) {
         await this.connect();
       }
-
-      if (this.useMock) {
-        return await this.client.get(key);
-      }
-
-      const value = await this.client.get(key);
-      if (!value) return null;
-
-      try {
-        return JSON.parse(value);
-      } catch (parseError) {
-        return value;
-      }
+      return await this.clusterClient.get(key);
     } catch (error) {
       console.error('Redis get error:', error);
       throw error;
@@ -189,19 +140,7 @@ class RedisClient {
       if (!this.isConnected) {
         await this.connect();
       }
-
-      if (this.useMock) {
-        return await this.client.setEx(key, seconds, value);
-      }
-
-      let stringValue;
-      if (typeof value === 'object') {
-        stringValue = JSON.stringify(value);
-      } else {
-        stringValue = String(value);
-      }
-
-      return await this.client.setEx(key, seconds, stringValue);
+      return await this.clusterClient.setEx(key, seconds, value);
     } catch (error) {
       console.error('Redis setEx error:', error);
       throw error;
@@ -213,7 +152,7 @@ class RedisClient {
       if (!this.isConnected) {
         await this.connect();
       }
-      return await this.client.del(key);
+      return await this.clusterClient.del(key);
     } catch (error) {
       console.error('Redis del error:', error);
       throw error;
@@ -225,22 +164,127 @@ class RedisClient {
       if (!this.isConnected) {
         await this.connect();
       }
-      return await this.client.expire(key, seconds);
+      return await this.clusterClient.expire(key, seconds);
     } catch (error) {
       console.error('Redis expire error:', error);
       throw error;
     }
   }
 
+  // 클러스터 상태 확인 (새로운 기능)
+  async getClusterStatus() {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.getClusterStatus();
+    } catch (error) {
+      console.error('Redis cluster status error:', error);
+      return { error: error.message };
+    }
+  }
+
+  // 통계 리셋 (새로운 기능)
+  resetStats() {
+    if (this.clusterClient) {
+      this.clusterClient.resetStats();
+    }
+  }
+
+  // RedisJSON 메서드들
+  async jsonSet(key, path, value) {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.jsonSet(key, path, value);
+    } catch (error) {
+      console.error('Redis JSON.SET error:', error);
+      throw error;
+    }
+  }
+
+  async jsonGet(key, path = '$') {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.jsonGet(key, path);
+    } catch (error) {
+      console.error('Redis JSON.GET error:', error);
+      throw error;
+    }
+  }
+
+  async jsonDel(key, path = '$') {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.jsonDel(key, path);
+    } catch (error) {
+      console.error('Redis JSON.DEL error:', error);
+      throw error;
+    }
+  }
+
+  // RedisSearch 메서드들
+  async ftCreate(indexName, schema) {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.ftCreate(indexName, schema);
+    } catch (error) {
+      console.error('Redis FT.CREATE error:', error);
+      throw error;
+    }
+  }
+
+  async ftSearch(indexName, query, options = {}) {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.ftSearch(indexName, query, options);
+    } catch (error) {
+      console.error('Redis FT.SEARCH error:', error);
+      throw error;
+    }
+  }
+
+  async ftInfo(indexName) {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.ftInfo(indexName);
+    } catch (error) {
+      console.error('Redis FT.INFO error:', error);
+      throw error;
+    }
+  }
+
+  async ftDropIndex(indexName) {
+    try {
+      if (!this.isConnected) {
+        await this.connect();
+      }
+      return await this.clusterClient.ftDropIndex(indexName);
+    } catch (error) {
+      console.error('Redis FT.DROPINDEX error:', error);
+      throw error;
+    }
+  }
+
   async quit() {
-    if (this.client) {
+    if (this.clusterClient) {
       try {
-        await this.client.quit();
+        await this.clusterClient.quit();
         this.isConnected = false;
-        this.client = null;
-        console.log('Redis connection closed successfully');
+        console.log('Redis cluster connection closed successfully');
       } catch (error) {
-        console.error('Redis quit error:', error);
+        console.error('Redis cluster quit error:', error);
       }
     }
   }
